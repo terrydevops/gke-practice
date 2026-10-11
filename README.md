@@ -12,7 +12,7 @@ infrastructure has been created from this code yet.
 ```
 gke-practice/
 ├── bootstrap/          # applied once, by a human, in this order
-│   ├── state/          # GCS bucket for Terraform state
+│   ├── state/          # GCS bucket for Terraform state (and, once created, its own state)
 │   └── ci/             # GitLab Workload Identity Federation: plan SA (read-only, any
 │                       # branch), apply SA (protected refs only), access to the state bucket
 ├── modules/
@@ -29,12 +29,13 @@ gke-practice/
 │   └── nonprod/        # one shared cluster (dev + staging as namespaces)
 │       ├── main.tf     # APIs, network, cluster
 │       ├── access.tf   # who may connect to the cluster (IAM); rights inside are RBAC
-│       └── backend.tf  # GCS backend, commented out while plan-only
+│       └── backend.tf.disabled  # GCS backend; inactive until renamed (docs/state.md)
 ├── gitops/             # everything in-cluster, reconciled by Flux (see gitops/README.md)
 │   ├── clusters/nonprod/   # bootstrap path: Flux lockdown, platform, one block per tenant
 │   ├── infrastructure/     # platform-owned: CloudNativePG operator (HelmRelease), RBAC
 │   ├── tenants/base/       # platform-owned: the fence stamped around each tenant
 │   └── apps/               # tenant-owned: whoami base + dev / staging
+├── docs/state.md       # where state and locks live, how to switch them on, how to recover
 └── .gitlab-ci.yml      # validate -> plan (any branch); no apply job until remote state is on
 ```
 

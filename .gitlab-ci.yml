@@ -7,10 +7,10 @@
 #   plan     : PLAN service account (read-only, cannot reach the API server).
 #              Any branch that changed Terraform.
 #
-# There is no apply job yet, on purpose: envs/nonprod still uses local state
-# (see backend.tf), and a CI apply without remote state would lose the state
-# with the job container while the resources stay in GCP. Add it back, gated to
-# protected refs and manual, once the GCS backend is switched on.
+# There is no apply job yet, on purpose: envs/nonprod still uses local state,
+# and a CI apply without remote state would lose the state with the job
+# container while the resources stay in GCP. docs/state.md has the order for
+# switching remote state on and the apply job to add afterwards.
 #
 # Terraform here never talks to the Kubernetes API (no helm / kubernetes
 # provider), so every layer can be planned from any branch. In-cluster changes
@@ -38,7 +38,10 @@ variables:
 #   WIF_PROVIDER        projects/<number>/locations/global/workloadIdentityPools/<pool>/providers/<provider>
 #   PLAN_SA             e-mail of the read-only plan service account
 #
-# WIF_PROVIDER and PLAN_SA are outputs of bootstrap/ci.
+#   TF_STATE_BUCKET     state bucket; only needed once remote state is on
+#
+# WIF_PROVIDER and PLAN_SA are outputs of bootstrap/ci; TF_STATE_BUCKET is the
+# output of bootstrap/state.
 
 # bootstrap/ is applied by hand, but a change there is still validated.
 .tf_changes: &tf_changes
@@ -73,7 +76,14 @@ variables:
       "service_account_impersonation_url": "https://iamcredentials.googleapis.com/v1/projects/-/serviceAccounts/$SERVICE_ACCOUNT:generateAccessToken"
     }
     JSON
-  - terraform -chdir="$TF_DIR" init -input=false
+  # Remote state switches itself on: once backend.tf exists in the root
+  # (docs/state.md), init needs the bucket, which comes from a CI/CD variable.
+  - |
+    if [ -f "$TF_DIR/backend.tf" ]; then
+      terraform -chdir="$TF_DIR" init -input=false -backend-config="bucket=$TF_STATE_BUCKET"
+    else
+      terraform -chdir="$TF_DIR" init -input=false
+    fi
 
 # Identity for jobs that talk to GCP; the job sets SERVICE_ACCOUNT.
 .wif:

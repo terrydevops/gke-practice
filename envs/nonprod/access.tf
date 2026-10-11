@@ -21,6 +21,8 @@ resource "google_project_iam_custom_role" "cluster_connect" {
     "container.clusters.list",
     "container.clusters.connect",
   ]
+
+  depends_on = [google_project_service.this] # needs the IAM API
 }
 
 resource "google_project_iam_member" "cluster_connect" {

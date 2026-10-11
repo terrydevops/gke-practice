@@ -106,6 +106,10 @@ locals {
 resource "google_service_account" "plan" {
   account_id   = "gitlab-plan"
   display_name = "GitLab CI: terraform plan (read-only)"
+
+  # On a fresh project the IAM API is still off. Everything below hangs off
+  # this account, so waiting here orders the whole chain.
+  depends_on = [google_project_service.this]
 }
 
 resource "google_service_account_iam_member" "plan" {
@@ -128,6 +132,10 @@ resource "google_project_iam_member" "plan" {
 resource "google_service_account" "apply" {
   account_id   = "gitlab-apply"
   display_name = "GitLab CI: terraform apply (protected refs only)"
+
+  # On a fresh project the IAM API is still off. Everything below hangs off
+  # this account, so waiting here orders the whole chain.
+  depends_on = [google_project_service.this]
 }
 
 resource "google_service_account_iam_member" "apply" {

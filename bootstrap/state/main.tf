@@ -1,9 +1,13 @@
 ###
 # Bootstrap, step 1 — the one thing that must exist before any other layer can keep
-# remote state: a GCS bucket. Applied once, by a human, with local state.
-# Counterpart of eks-practice/bootstrap (S3 + DynamoDB).
+# remote state: a GCS bucket. Counterpart of eks-practice/bootstrap (S3 + DynamoDB).
 #
 # GCS needs no lock table: the gcs backend locks with an object in the bucket.
+#
+# Chicken and egg: this root creates the bucket, so its FIRST apply can only
+# use local state. Right after that its own state is moved into the bucket
+# (backend.tf.disabled -> backend.tf, `terraform init -migrate-state`), so no
+# state is left on a laptop. docs/state.md has the exact steps.
 ###
 provider "google" {
   project = var.project_id

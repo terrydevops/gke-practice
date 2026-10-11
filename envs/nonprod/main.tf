@@ -68,4 +68,8 @@ module "cluster" {
   release_channel     = "REGULAR"
   deletion_protection = false # practice cluster; prod leaves the default (true)
   labels              = local.labels
+
+  # The node service account references nothing in the network module, so
+  # without this it could be created before the IAM API is enabled.
+  depends_on = [google_project_service.this]
 }
