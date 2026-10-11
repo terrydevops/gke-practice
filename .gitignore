@@ -1,0 +1,12 @@
+.terraform/
+*.tfstate
+*.tfstate.*
+*.tfplan
+crash.log
+.DS_Store
+.oidc_token
+.wif-credentials.json
+
+# Real values stay local or in CI/CD variables; only the examples are committed.
+*.tfvars
+!*.tfvars.example

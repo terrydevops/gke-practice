@@ -1,0 +1,2 @@
+project_id = "my-gcp-project-id"
+location   = "europe-west1"

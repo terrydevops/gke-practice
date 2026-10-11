@@ -1,0 +1,106 @@
+###
+# CI/CD — Terraform through GitLab OIDC and Workload Identity Federation. No
+# service-account keys, no protected CI variables. Identities come from
+# bootstrap/ci.
+#
+#   validate : fmt + validate. No GCP access.
+#   plan     : PLAN service account (read-only, cannot reach the API server).
+#              Any branch that changed Terraform.
+#
+# There is no apply job yet, on purpose: envs/nonprod still uses local state
+# (see backend.tf), and a CI apply without remote state would lose the state
+# with the job container while the resources stay in GCP. Add it back, gated to
+# protected refs and manual, once the GCS backend is switched on.
+#
+# Terraform here never talks to the Kubernetes API (no helm / kubernetes
+# provider), so every layer can be planned from any branch. In-cluster changes
+# are Flux's job and do not run this pipeline.
+###
+
+default:
+  image:
+    name: hashicorp/terraform:1.9
+    entrypoint: [""]
+
+stages:
+  - validate
+  - plan
+
+variables:
+  TF_DIR: envs/nonprod
+
+# Nothing that identifies the real environment is committed. Set these in
+# Settings > CI/CD > Variables (masked, so they are also hidden in job logs):
+#
+#   TF_VAR_project_id   GCP project ID
+#   TF_VAR_region       e.g. europe-west1
+#   TF_VAR_zone         e.g. europe-west1-b
+#   WIF_PROVIDER        projects/<number>/locations/global/workloadIdentityPools/<pool>/providers/<provider>
+#   PLAN_SA             e-mail of the read-only plan service account
+#
+# WIF_PROVIDER and PLAN_SA are outputs of bootstrap/ci.
+
+# bootstrap/ is applied by hand, but a change there is still validated.
+.tf_changes: &tf_changes
+  - envs/**/*
+  - modules/**/*
+  - bootstrap/**/*
+  - .gitlab-ci.yml
+
+# On a branch compare to main (a NEW branch otherwise counts as "everything
+# changed"); on main compare to the previous commit.
+.tf_rules: &tf_rules
+  - if: '$CI_COMMIT_BRANCH == "main"'
+    changes: *tf_changes
+  - if: '$CI_COMMIT_BRANCH != "main"'
+    changes:
+      paths: *tf_changes
+      compare_to: "main"
+
+# Write the GitLab ID token to a file plus a credential configuration that
+# points at it. The Google provider reads GOOGLE_APPLICATION_CREDENTIALS,
+# exchanges the token at STS and impersonates $SERVICE_ACCOUNT -- no gcloud.
+.wif_init: &wif_init
+  - echo "$GITLAB_OIDC_TOKEN" > "$CI_PROJECT_DIR/.oidc_token"
+  - |
+    cat > "$GOOGLE_APPLICATION_CREDENTIALS" <<JSON
+    {
+      "type": "external_account",
+      "audience": "//iam.googleapis.com/$WIF_PROVIDER",
+      "subject_token_type": "urn:ietf:params:oauth:token-type:jwt",
+      "token_url": "https://sts.googleapis.com/v1/token",
+      "credential_source": { "file": "$CI_PROJECT_DIR/.oidc_token" },
+      "service_account_impersonation_url": "https://iamcredentials.googleapis.com/v1/projects/-/serviceAccounts/$SERVICE_ACCOUNT:generateAccessToken"
+    }
+    JSON
+  - terraform -chdir="$TF_DIR" init -input=false
+
+# Identity for jobs that talk to GCP; the job sets SERVICE_ACCOUNT.
+.wif:
+  id_tokens:
+    GITLAB_OIDC_TOKEN:
+      aud: https://iam.googleapis.com/$WIF_PROVIDER
+  variables:
+    GOOGLE_APPLICATION_CREDENTIALS: $CI_PROJECT_DIR/.wif-credentials.json
+
+validate:
+  stage: validate
+  rules: *tf_rules
+  script:
+    - terraform fmt -check -recursive .
+    - |
+      for d in bootstrap/state bootstrap/ci envs/nonprod; do
+        echo "== validate $d =="
+        terraform -chdir="$d" init -backend=false -input=false
+        terraform -chdir="$d" validate
+      done
+
+plan:
+  extends: .wif
+  stage: plan
+  variables:
+    SERVICE_ACCOUNT: $PLAN_SA
+  rules: *tf_rules
+  script:
+    - *wif_init
+    - terraform -chdir="$TF_DIR" plan -input=false -lock=false

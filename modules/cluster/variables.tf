@@ -1,0 +1,87 @@
+variable "project_id" {
+  type = string
+}
+
+variable "cluster_name" {
+  type = string
+}
+
+variable "location" {
+  description = "A zone (zonal cluster, one control plane) or a region (regional cluster, HA control plane)."
+  type        = string
+}
+
+variable "network_id" {
+  type = string
+}
+
+variable "subnetwork_id" {
+  type = string
+}
+
+variable "pods_range_name" {
+  type = string
+}
+
+variable "services_range_name" {
+  type = string
+}
+
+variable "control_plane_subnetwork_id" {
+  description = "Subnet that holds the control plane's internal endpoint."
+  type        = string
+}
+
+variable "control_plane_cidr" {
+  description = "Range of that subnet. Source of control plane -> node traffic in the webhook firewall rule."
+  type        = string
+}
+
+variable "proxy_only_cidr" {
+  description = "Range of the proxy-only subnet; source of traffic from internal / regional load balancers."
+  type        = string
+}
+
+variable "release_channel" {
+  description = "RAPID, REGULAR or STABLE. Non-prod one step ahead of prod, so an upgrade is seen there first."
+  type        = string
+  default     = "REGULAR"
+}
+
+variable "deletion_protection" {
+  type    = bool
+  default = true
+}
+
+variable "labels" {
+  description = "Labels on the cluster and its nodes (cost allocation, ownership)."
+  type        = map(string)
+  default     = {}
+}
+
+variable "machine_type" {
+  type    = string
+  default = "e2-standard-2"
+}
+
+variable "min_nodes" {
+  type    = number
+  default = 1
+}
+
+variable "max_nodes" {
+  type    = number
+  default = 3
+}
+
+variable "webhook_ports" {
+  description = "Ports of admission webhooks served by pods (CloudNativePG 9443, many operators 8443). GKE itself only opens 443 and 10250 from the control plane."
+  type        = list(string)
+  default     = ["8443", "9443"]
+}
+
+variable "backend_ports" {
+  description = "Container ports that internal / regional load balancers may reach."
+  type        = list(string)
+  default     = ["8080"]
+}

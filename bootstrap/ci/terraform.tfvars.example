@@ -1,0 +1,4 @@
+project_id          = "my-gcp-project-id"
+tfstate_bucket      = "my-gcp-project-id-tfstate"
+gitlab_namespace_id = "00000000"
+gitlab_project_id   = "00000000"
