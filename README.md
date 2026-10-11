@@ -4,8 +4,9 @@ The GKE counterpart of `eks-practice` v2, built to learn where GKE differs. Same
 
 > **Terraform = GCP only. GitOps (Flux) = everything in-cluster.**
 
-**Status: planned in CI, never applied.** `terraform plan` passes in GitLab CI (24 resources). No
-infrastructure has been created from this code yet.
+**Status: bootstrap applied, environment only planned.** The state bucket and the CI identity
+(`bootstrap/`) exist; all three roots keep their state in the bucket. `envs/nonprod` (network and
+cluster, 24 resources) has been planned but never applied.
 
 ## Layout
 
@@ -29,14 +30,14 @@ gke-practice/
 │   └── nonprod/        # one shared cluster (dev + staging as namespaces)
 │       ├── main.tf     # APIs, network, cluster
 │       ├── access.tf   # who may connect to the cluster (IAM); rights inside are RBAC
-│       └── backend.tf.disabled  # GCS backend; inactive until renamed (docs/state.md)
+│       └── backend.tf  # GCS backend; the bucket name is passed at init (docs/state.md)
 ├── gitops/             # everything in-cluster, reconciled by Flux (see gitops/README.md)
 │   ├── clusters/nonprod/   # bootstrap path: Flux lockdown, platform, one block per tenant
 │   ├── infrastructure/     # platform-owned: CloudNativePG operator (HelmRelease), RBAC
 │   ├── tenants/base/       # platform-owned: the fence stamped around each tenant
 │   └── apps/               # tenant-owned: whoami base + dev / staging
 ├── docs/state.md       # where state and locks live, how to switch them on, how to recover
-└── .gitlab-ci.yml      # validate -> plan (any branch); no apply job until remote state is on
+└── .gitlab-ci.yml      # validate -> plan (any branch); no apply job yet (docs/state.md, step 6)
 ```
 
 Still to add: a PostgreSQL cluster on CloudNativePG with WAL archiving to GCS and a restore drill,
@@ -54,7 +55,7 @@ from masked CI/CD variables listed at the top of `.gitlab-ci.yml`.
 gcloud auth application-default login      # once; Terraform reads these credentials
 cd envs/nonprod
 cp terraform.tfvars.example terraform.tfvars   # then fill in your own values
-terraform init
+terraform init -backend-config="bucket=<state bucket>"   # the output of bootstrap/state
 terraform plan
 ```
 

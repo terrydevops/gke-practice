@@ -7,10 +7,8 @@
 #   plan     : PLAN service account (read-only, cannot reach the API server).
 #              Any branch that changed Terraform.
 #
-# There is no apply job yet, on purpose: envs/nonprod still uses local state,
-# and a CI apply without remote state would lose the state with the job
-# container while the resources stay in GCP. docs/state.md has the order for
-# switching remote state on and the apply job to add afterwards.
+# There is no apply job yet. State is remote (docs/state.md), so one can be
+# added: step 6 there has the job and the two gates in front of it.
 #
 # Terraform here never talks to the Kubernetes API (no helm / kubernetes
 # provider), so every layer can be planned from any branch. In-cluster changes
@@ -19,7 +17,7 @@
 
 default:
   image:
-    name: hashicorp/terraform:1.9
+    name: hashicorp/terraform:1.16.5
     entrypoint: [""]
 
 stages:

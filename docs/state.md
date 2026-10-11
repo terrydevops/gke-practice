@@ -1,8 +1,8 @@
 # Terraform state: where it lives, how to switch it on, how to recover it
 
-**Status: not switched on.** Nothing has been applied, so no state exists anywhere. The pipeline plans
-against an empty local state on every run. This page is the procedure for the day that changes. None of
-the commands below has been run yet.
+**Status: switched on (steps 1 to 5 done on 2026-10-12).** The bucket and the CI identity exist and
+all three roots keep their state in the bucket. `envs/nonprod` has an empty state: nothing in it has
+been applied. Step 6 (an apply job) and everything under "Operating it" have not been run yet.
 
 ## Design
 
@@ -34,8 +34,8 @@ service-account keys. Keep it that way; a secret in state would be readable from
 
 ## Switching it on
 
-Each root has a `backend.tf.disabled`. Terraform ignores it until it is renamed to `backend.tf`. Do the
-steps in this order; each one depends on the one before.
+In a fresh copy of this design each root starts with a `backend.tf.disabled`, which Terraform ignores
+until it is renamed to `backend.tf`. Do the steps in this order; each one depends on the one before.
 
 Authenticate as the project owner first. Terraform and the gcs backend both read application-default
 credentials:
@@ -73,6 +73,9 @@ terraform plan                                                     # must say: N
 rm -f terraform.tfstate terraform.tfstate.backup                   # the local copy is now stale
 ```
 
+After the migration `terraform.tfstate` is an empty file and the old content sits in
+`terraform.tfstate.backup`; both can go once the plan says "No changes".
+
 ### 3. CI identity, with remote state from the start
 
 ```bash
@@ -94,6 +97,10 @@ git mv backend.tf.disabled backend.tf
 terraform init -backend-config="bucket=$BUCKET"     # add -migrate-state if a local state file exists
 terraform plan
 ```
+
+This `init` must be run by the owner, before the pipeline ever sees `backend.tf`: the first `init`
+against an empty prefix writes an empty `default.tfstate` (and takes the lock to do it). The plan
+service account can only read the bucket, so it could not do that first write.
 
 ### 5. Commit the three renames in one merge request
 
@@ -125,8 +132,8 @@ impersonate the apply service account, and GitLab only hands `APPLY_SA` to prote
 
 ### Later: split network and cluster
 
-They share one root and one state today, because a plan-only repository cannot read one layer's outputs
-from another layer's (non-existent) state. Once state is real, split `envs/nonprod` into `network` and
+They share one root and one state today, because a cluster layer cannot be planned from the outputs of
+a network layer that has never been applied. Once the network exists, split `envs/nonprod` into `network` and
 `cluster` roots with their own prefixes, the cluster reading the network through
 `terraform_remote_state`. A firewall change then no longer refreshes or locks the cluster.
 

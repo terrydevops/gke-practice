@@ -1,7 +1,6 @@
 ###
-# Remote state for this root. Inactive: Terraform only reads *.tf files.
-# Switched on by renaming this file to backend.tf, in the order given in
-# docs/state.md. The bucket name is passed at init time and is never committed:
+# Remote state for this root (switched on in the order given in docs/state.md).
+# The bucket name is passed at init time and is never committed:
 #   terraform init -backend-config="bucket=<state bucket>"
 #
 # State object: gs://<state bucket>/bootstrap/state/default.tfstate
