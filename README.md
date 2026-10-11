@@ -30,11 +30,16 @@ gke-practice/
 │       ├── main.tf     # APIs, network, cluster
 │       ├── access.tf   # who may connect to the cluster (IAM); rights inside are RBAC
 │       └── backend.tf  # GCS backend, commented out while plan-only
+├── gitops/             # everything in-cluster, reconciled by Flux (see gitops/README.md)
+│   ├── clusters/nonprod/   # bootstrap path: Flux lockdown, platform, one block per tenant
+│   ├── infrastructure/     # platform-owned: CloudNativePG operator (HelmRelease), RBAC
+│   ├── tenants/base/       # platform-owned: the fence stamped around each tenant
+│   └── apps/               # tenant-owned: whoami base + dev / staging
 └── .gitlab-ci.yml      # validate -> plan (any branch); no apply job until remote state is on
 ```
 
-Still to add: `gitops/` with Flux (sources, Kustomizations, HelmReleases), CloudNativePG with WAL
-archiving to GCS and a restore drill, kube-prometheus-stack with one alert.
+Still to add: a PostgreSQL cluster on CloudNativePG with WAL archiving to GCS and a restore drill,
+kube-prometheus-stack with one alert, a route to whoami from outside.
 
 ## Configuration
 

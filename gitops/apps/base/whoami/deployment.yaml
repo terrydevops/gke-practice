@@ -1,0 +1,79 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: whoami
+  labels:
+    app: whoami
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: whoami
+  template:
+    metadata:
+      labels:
+        app: whoami
+    spec:
+      # Spread replicas across zones and nodes so a single node/zone failure can't
+      # take out every replica (which would defeat the PDB). Soft (ScheduleAnyway)
+      # so a small or zonal cluster never leaves pods Pending. matchLabelKeys
+      # ignores the old ReplicaSet during rollouts so skew is computed per-revision.
+      topologySpreadConstraints:
+        - maxSkew: 1
+          topologyKey: topology.kubernetes.io/zone
+          whenUnsatisfiable: ScheduleAnyway
+          labelSelector:
+            matchLabels:
+              app: whoami
+          matchLabelKeys:
+            - pod-template-hash
+        - maxSkew: 1
+          topologyKey: kubernetes.io/hostname
+          whenUnsatisfiable: ScheduleAnyway
+          labelSelector:
+            matchLabels:
+              app: whoami
+          matchLabelKeys:
+            - pod-template-hash
+      # Complies with the "restricted" Pod Security Standard that the namespace
+      # enforces.
+      securityContext:
+        runAsNonRoot: true
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+        - name: whoami
+          # Fully-qualified and pinned: no implicit registry, no moving tag.
+          image: docker.io/traefik/whoami:v1.10.1
+          args: ["--port=8080"] # non-root cannot bind :80
+          ports:
+            - containerPort: 8080
+          # readiness keeps the pod out of the Service until it serves; liveness
+          # restarts it if it wedges.
+          readinessProbe:
+            httpGet: { path: /, port: 8080 }
+            initialDelaySeconds: 2
+            periodSeconds: 5
+            timeoutSeconds: 2
+            failureThreshold: 3
+          livenessProbe:
+            httpGet: { path: /, port: 8080 }
+            initialDelaySeconds: 5
+            periodSeconds: 10
+            timeoutSeconds: 2
+            failureThreshold: 3
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            runAsUser: 65532
+            capabilities:
+              drop: ["ALL"]
+          resources:
+            # Sizes carried over from eks-practice, where they came from a VPA
+            # recommendation.
+            requests:
+              cpu: 15m
+              memory: 100Mi
+            limits:
+              cpu: 100m
+              memory: 128Mi

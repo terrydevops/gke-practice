@@ -1,0 +1,35 @@
+###
+# Per-tenant ceiling, owned by the platform. The tenant's role (`admin`) cannot
+# edit ResourceQuota or LimitRange, so a tenant cannot raise its own limit.
+#  - ResourceQuota caps the namespace total, so one tenant can't starve another
+#    on the shared cluster, and forces every pod to declare requests / limits.
+#  - LimitRange supplies defaults, so a pod that omits them still fits the quota.
+# Sizes can be overridden per tenant in clusters/<cluster>/tenants.yaml.
+###
+apiVersion: v1
+kind: ResourceQuota
+metadata:
+  name: tenant-quota
+  namespace: ${tenant_namespace}
+spec:
+  hard:
+    requests.cpu: "${quota_requests_cpu:=1}"
+    requests.memory: "${quota_requests_memory:=1Gi}"
+    limits.cpu: "${quota_limits_cpu:=2}"
+    limits.memory: "${quota_limits_memory:=2Gi}"
+    pods: "${quota_pods:=10}"
+---
+apiVersion: v1
+kind: LimitRange
+metadata:
+  name: tenant-limits
+  namespace: ${tenant_namespace}
+spec:
+  limits:
+    - type: Container
+      default: # applied if a container sets no limits
+        cpu: 200m
+        memory: 128Mi
+      defaultRequest: # applied if a container sets no requests
+        cpu: 50m
+        memory: 64Mi

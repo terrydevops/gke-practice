@@ -1,0 +1,15 @@
+###
+# PodDisruptionBudget for whoami. Caps how many pods may be voluntarily evicted
+# at once (node drains, node-pool upgrades, autoscaler scale-down). maxUnavailable: 1 is safe at
+# 1, 2, or 3 replicas -- unlike minAvailable: 1, which would block all evictions on
+# the single-replica dev overlay and stall node drains and upgrades.
+###
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: whoami
+spec:
+  maxUnavailable: 1
+  selector:
+    matchLabels:
+      app: whoami

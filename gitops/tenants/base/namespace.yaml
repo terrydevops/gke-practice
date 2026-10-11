@@ -1,0 +1,12 @@
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: ${tenant_namespace}
+  labels:
+    tenant: ${tenant}
+    # Pod Security Admission: pods that are not "restricted"-compliant are
+    # rejected at admission. The tenant cannot relax this: it has no rights on
+    # Namespace objects.
+    pod-security.kubernetes.io/enforce: restricted
+    pod-security.kubernetes.io/warn: restricted
+    pod-security.kubernetes.io/audit: restricted

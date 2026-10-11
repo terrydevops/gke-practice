@@ -1,0 +1,21 @@
+###
+# What a human may do once inside the cluster. IAM (envs/nonprod/access.tf) only
+# decides who can REACH the API server; every right in the cluster is a binding
+# in this file, so it is reviewed and has history.
+#
+# On GKE the RBAC user name is the Google account e-mail. It is substituted
+# from the cluster-vars ConfigMap, so no real account is committed. With a
+# Google Workspace domain this would be a group, not a person.
+###
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: cluster-admins
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: cluster-admin
+subjects:
+  - apiGroup: rbac.authorization.k8s.io
+    kind: User
+    name: ${cluster_admin}

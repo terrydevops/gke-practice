@@ -14,3 +14,8 @@ output "workload_pool" {
 output "nat_ips" {
   value = module.network.nat_ips
 }
+
+output "proxy_only_cidr" {
+  description = "Goes into the cluster-vars ConfigMap that Flux substitutes from."
+  value       = module.network.proxy_only_cidr
+}

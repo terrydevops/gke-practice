@@ -1,0 +1,56 @@
+###
+# CloudNativePG operator. Only the operator and its CRDs; the PostgreSQL
+# clusters themselves are declared next to the apps that own them.
+#
+# A HelmRelease is Flux running Helm for real (install / upgrade / rollback,
+# release history in the cluster). Argo CD instead renders the chart and applies
+# plain manifests. Either way the chart never passes through Terraform.
+#
+# Platform releases live in flux-system and run as `helm-controller` (bound to
+# cluster-admin by Flux): the chart installs CRDs, ClusterRoles and webhooks.
+# The workload itself lands in cnpg-system through targetNamespace. Tenants
+# cannot do this: they have no objects in flux-system and no such account.
+#
+# Needs the firewall rule in modules/cluster/firewall.tf: the API server calls
+# the operator's admission webhook on port 9443.
+###
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: cnpg-system
+---
+apiVersion: source.toolkit.fluxcd.io/v1
+kind: HelmRepository
+metadata:
+  name: cloudnative-pg
+  namespace: flux-system
+spec:
+  interval: 12h
+  url: https://cloudnative-pg.github.io/charts
+---
+apiVersion: helm.toolkit.fluxcd.io/v2
+kind: HelmRelease
+metadata:
+  name: cloudnative-pg
+  namespace: flux-system
+spec:
+  interval: 1h
+  serviceAccountName: helm-controller
+  targetNamespace: cnpg-system
+  releaseName: cloudnative-pg
+  chart:
+    spec:
+      chart: cloudnative-pg
+      version: "0.29.1" # pinned; an upgrade is a reviewed change in git
+      sourceRef:
+        kind: HelmRepository
+        name: cloudnative-pg
+  install:
+    crds: CreateReplace
+    remediation:
+      retries: 3
+  upgrade:
+    crds: CreateReplace
+    remediation:
+      retries: 3
+      remediateLastFailure: true # roll back to the last good release

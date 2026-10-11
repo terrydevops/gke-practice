@@ -1,0 +1,34 @@
+###
+# The identity Flux uses for this tenant, and the only rights it has.
+#
+# The account lives in flux-system because a Flux Kustomization impersonates an
+# account from its OWN namespace, and the tenant's Kustomization is kept in
+# flux-system (see sync.yaml). Its rights exist in exactly one place: this
+# RoleBinding, inside the tenant's namespace.
+#
+# `admin` through a RoleBinding = everything namespaced in this namespace
+# (Deployments, Services, NetworkPolicies, Roles...) and nothing cluster-wide:
+# no Namespaces, no CRDs, no ClusterRoles, no quota. An object that asks for
+# another namespace is refused by the API server.
+###
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: ${tenant}
+  namespace: flux-system
+  labels:
+    tenant: ${tenant}
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: flux-reconciler
+  namespace: ${tenant_namespace}
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: admin
+subjects:
+  - kind: ServiceAccount
+    name: ${tenant}
+    namespace: flux-system

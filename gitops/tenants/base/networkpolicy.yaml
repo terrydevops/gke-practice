@@ -1,0 +1,14 @@
+###
+# Baseline for every tenant namespace, enforced by GKE Dataplane V2: nothing can
+# reach any pod until the tenant opens something. Policies are additive, so the
+# tenant's own allow rules (next to its app) work on top of this one.
+###
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: default-deny-ingress
+  namespace: ${tenant_namespace}
+spec:
+  podSelector: {} # all pods in this namespace
+  policyTypes:
+    - Ingress

@@ -1,0 +1,33 @@
+###
+# The tenant's own sync. Defined by the platform, so the tenant cannot change
+# which account it runs as or where it may deploy; the tenant only controls
+# what is under `path`.
+#
+# It stays in flux-system so it can use the one GitRepository there. With
+# --no-cross-namespace-refs a Kustomization in the tenant's namespace could not
+# reference it, and a monorepo has no second source to give the tenant.
+###
+apiVersion: kustomize.toolkit.fluxcd.io/v1
+kind: Kustomization
+metadata:
+  name: ${tenant}
+  namespace: flux-system
+  labels:
+    tenant: ${tenant}
+spec:
+  interval: 10m
+  retryInterval: 1m
+  timeout: 5m
+  sourceRef:
+    kind: GitRepository
+    name: flux-system
+  path: ${tenant_path}
+  serviceAccountName: ${tenant} # impersonated for every apply
+  targetNamespace: ${tenant_namespace} # forced onto every namespaced object
+  prune: true
+  wait: true
+  postBuild:
+    # Passed down as a literal: the tenant's account is not allowed to read
+    # the cluster-vars ConfigMap in flux-system.
+    substitute:
+      proxy_only_cidr: ${proxy_only_cidr}

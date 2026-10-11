@@ -1,0 +1,72 @@
+###
+# Entry point for the non-prod cluster, part 2: tenants.
+#
+# A tenant is one <app>-<env> on this SHARED cluster. Each block below stamps
+# the same fence (gitops/tenants/base) with that tenant's values:
+#
+#   platform side, as cluster-admin : namespace, quota, default-deny, the
+#                                     tenant's service account and its rights
+#   tenant side, as that account    : whatever is under the tenant's path, and
+#                                     only inside the tenant's namespace
+#
+# Onboarding a tenant = adding one block here. prod is a separate cluster with
+# its own gitops/clusters/prod, so nothing here can reach it.
+#
+# Counterpart of eks-practice v2: the `apps` ApplicationSet (stamping) plus the
+# `apps` AppProject (the fence). Flux has no generator, so the list is explicit.
+###
+apiVersion: kustomize.toolkit.fluxcd.io/v1
+kind: Kustomization
+metadata:
+  name: tenant-whoami-dev
+  namespace: flux-system
+spec:
+  dependsOn:
+    - name: infra-configs
+  interval: 10m
+  retryInterval: 1m
+  timeout: 5m
+  sourceRef:
+    kind: GitRepository
+    name: flux-system
+  path: ./gitops/tenants/base
+  serviceAccountName: kustomize-controller
+  prune: true
+  wait: true # ready only when the tenant's own sync below is ready
+  postBuild:
+    substitute:
+      tenant: whoami-dev
+      tenant_namespace: whoami-dev-app
+      tenant_path: ./gitops/apps/nonprod/whoami-dev
+    # Environment values (proxy-only CIDR) that are not kept in git.
+    substituteFrom:
+      - kind: ConfigMap
+        name: cluster-vars
+---
+apiVersion: kustomize.toolkit.fluxcd.io/v1
+kind: Kustomization
+metadata:
+  name: tenant-whoami-staging
+  namespace: flux-system
+spec:
+  dependsOn:
+    - name: infra-configs
+  interval: 10m
+  retryInterval: 1m
+  timeout: 5m
+  sourceRef:
+    kind: GitRepository
+    name: flux-system
+  path: ./gitops/tenants/base
+  serviceAccountName: kustomize-controller
+  prune: true
+  wait: true # ready only when the tenant's own sync below is ready
+  postBuild:
+    substitute:
+      tenant: whoami-staging
+      tenant_namespace: whoami-staging-app
+      tenant_path: ./gitops/apps/nonprod/whoami-staging
+    # Environment values (proxy-only CIDR) that are not kept in git.
+    substituteFrom:
+      - kind: ConfigMap
+        name: cluster-vars

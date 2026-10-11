@@ -1,0 +1,60 @@
+###
+# Entry point for the non-prod cluster, part 1: the platform.
+#
+# `flux bootstrap` creates the GitRepository `flux-system` (this repo) and one
+# root Kustomization that applies everything in this directory. The two Flux
+# Kustomizations below then pull in the platform in order:
+#
+#   infra-controllers : operators and their CRDs (Helm releases)
+#   infra-configs     : objects that need those CRDs or cluster-wide rights
+#
+# Counterpart of the `addons` ApplicationSet in eks-practice v2. There is no
+# generator here: one Kustomization per directory, ordered with dependsOn.
+#
+# Both run as `kustomize-controller`, the account Flux binds to cluster-admin.
+# That is stated explicitly because the lockdown in flux-system/ makes "no
+# service account named" mean "no rights".
+###
+apiVersion: kustomize.toolkit.fluxcd.io/v1
+kind: Kustomization
+metadata:
+  name: infra-controllers
+  namespace: flux-system
+spec:
+  interval: 1h # re-check git and correct drift at least this often
+  retryInterval: 2m
+  timeout: 10m
+  sourceRef:
+    kind: GitRepository
+    name: flux-system
+  path: ./gitops/infrastructure/controllers
+  serviceAccountName: kustomize-controller
+  prune: true # an object removed from git is removed from the cluster
+  wait: true # healthy means: every object applied here reports ready
+---
+apiVersion: kustomize.toolkit.fluxcd.io/v1
+kind: Kustomization
+metadata:
+  name: infra-configs
+  namespace: flux-system
+spec:
+  dependsOn:
+    - name: infra-controllers
+  interval: 1h
+  retryInterval: 2m
+  timeout: 5m
+  sourceRef:
+    kind: GitRepository
+    name: flux-system
+  path: ./gitops/infrastructure/configs
+  serviceAccountName: kustomize-controller
+  prune: true
+  wait: true
+  # Values that belong to one real environment (who the admin is, which CIDR the
+  # load balancer proxies use) are not in git. They come from a ConfigMap that is
+  # created once at bootstrap from Terraform outputs; see gitops/README.md.
+  # This is the Flux form of the GitOps Bridge used in eks-practice v2.
+  postBuild:
+    substituteFrom:
+      - kind: ConfigMap
+        name: cluster-vars

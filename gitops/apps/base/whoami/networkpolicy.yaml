@@ -1,0 +1,27 @@
+###
+# What whoami opens on top of the namespace's default-deny (which the platform
+# owns, in gitops/tenants/base): only whoami:8080, to callers in the SAME
+# namespace and to the load balancer proxies. Cross-namespace traffic
+# (e.g. staging -> dev) stays blocked.
+###
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-whoami-ingress
+spec:
+  podSelector:
+    matchLabels:
+      app: whoami
+  policyTypes:
+    - Ingress
+  ingress:
+    - from:
+        - podSelector: {} # any pod in the SAME namespace
+        # Proxy-only subnet: where the Envoy proxies of an internal / regional
+        # load balancer connect from. Same value as the firewall rule in
+        # modules/cluster/firewall.tf; substituted by Flux.
+        - ipBlock:
+            cidr: ${proxy_only_cidr}
+      ports:
+        - protocol: TCP
+          port: 8080
