@@ -1,7 +1,8 @@
 ###
 # Bootstrap, step 2: CI/CD identity (GCP only) — Workload Identity Federation for GitLab plus
-# the two service accounts the pipeline impersonates. No service-account keys,
-# no protected CI variables. Counterpart of eks-practice/v2/ci.
+# the two service accounts the pipeline impersonates. No service-account keys:
+# the pipeline proves who it is with a short-lived GitLab ID token.
+# Counterpart of eks-practice/v2/ci.
 #
 #   plan SA  : any branch of this GitLab project may impersonate it. Read-only
 #              roles, and NO `container.clusters.connect`, so it cannot reach
@@ -71,6 +72,11 @@ resource "google_iam_workload_identity_pool_provider" "gitlab" {
 locals {
   pool = "principalSet://iam.googleapis.com/${google_iam_workload_identity_pool.gitlab.name}"
 
+  # "Any ref" means any pipeline that runs IN this GitLab project. If the
+  # repository ever becomes public: a merge request from a fork runs in the
+  # fork, with the fork's project ID, and gets nothing -- unless a member chooses
+  # to run that pipeline in this project. Then the fork's code plans as the plan
+  # account. Review the diff of .gitlab-ci.yml before doing that.
   any_ref       = "${local.pool}/attribute.project_id/${var.gitlab_project_id}"
   protected_ref = "${local.pool}/attribute.project_protected/${var.gitlab_project_id}:true"
 

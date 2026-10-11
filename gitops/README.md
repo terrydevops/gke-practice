@@ -104,15 +104,20 @@ kubectl -n flux-system create configmap cluster-vars \
 # 3. Flux installs itself, fills in the two gotk-*.yaml files under
 #    gitops/clusters/nonprod/flux-system/ and commits them. The kustomization.yaml
 #    there (the lockdown patches) is ours and is applied from the first start.
-export GITLAB_TOKEN=<token with api scope>
+export GITLAB_TOKEN=<personal access token with api scope; used by this command only>
 flux bootstrap gitlab \
   --owner=<gitlab namespace> --repository=<repo> --personal \
   --branch=main --path=gitops/clusters/nonprod \
-  --token-auth
+  --deploy-token-auth
 ```
 
-`--token-auth` makes Flux fetch over HTTPS. The default is an SSH deploy key, and the VPC firewall only
-lets nodes reach the outside on TCP 443, so SSH to the Git host would be dropped.
+`--deploy-token-auth` makes Flux fetch over HTTPS with a project deploy token that bootstrap creates for
+it. Two reasons not to use the other modes:
+
+- the default is an SSH deploy key, and the VPC firewall only lets nodes reach the outside on TCP 443,
+  so SSH to the Git host would be dropped;
+- `--token-auth` also uses HTTPS, but it stores the personal access token itself in the cluster. A
+  deploy token is scoped to this one project, so what sits in the cluster cannot act as you elsewhere.
 
 After that, a change is a merge to `main`; nobody runs `kubectl apply`.
 

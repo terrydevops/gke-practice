@@ -1,7 +1,7 @@
 ###
 # CI/CD — Terraform through GitLab OIDC and Workload Identity Federation. No
-# service-account keys, no protected CI variables. Identities come from
-# bootstrap/ci.
+# service-account keys anywhere: CI/CD variables hold identifiers, never
+# credentials. Identities come from bootstrap/ci.
 #
 #   validate : fmt + validate. No GCP access.
 #   plan     : PLAN service account (read-only, cannot reach the API server).

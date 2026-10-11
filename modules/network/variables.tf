@@ -9,7 +9,7 @@ variable "region" {
 
 ###
 # IP plan. Every range of the environment is decided here, in one place, so
-# overlaps are caught in review and the firewall rules below can refer to them.
+# overlaps are caught in review and the firewall rules can refer to them.
 ###
 variable "nodes_cidr" {
   description = "Primary subnet range: node IPs."

@@ -62,14 +62,14 @@ terraform plan
 
 | Concept | eks-practice v2 | gke-practice |
 |---|---|---|
-| VPC and subnets | regional VPC, public + private subnets per AZ | global VPC, one regional subnet spanning all zones |
+| VPC and subnets | regional VPC, public + private subnets per AZ | global VPC, regional subnets that each span all zones |
 | What makes a node private | subnet route table (NAT, not IGW) | the node has no external IP |
 | Outbound for private nodes | NAT gateway | Cloud Router + Cloud NAT, one per region |
 | Pod IPs | vpc-cni with prefix delegation | VPC-native alias IPs from a secondary range |
 | NetworkPolicy | vpc-cni `enableNetworkPolicy` | Dataplane V2, built in |
 | Security groups / NACLs | SGs per ENI, NACLs per subnet | VPC firewall rules, targeted by service account or tag |
 | Who may reach the API server | public endpoint + access entries | DNS-based endpoint, authorised by IAM; both IP endpoints off |
-| Human / CI access to the cluster | EKS access entries → access policies | IAM roles (`roles/container.*`) plus Kubernetes RBAC |
+| Human access to the cluster | EKS access entries → access policies | a custom IAM role that only allows connecting, then Kubernetes RBAC from git |
 | Pod → cloud identity | Pod Identity / IRSA | Workload Identity |
 | Stop pods borrowing node credentials | IMDSv2, hop limit 1 | GKE metadata server (`GKE_METADATA`) |
 | Node identity | node IAM role | dedicated node service account, not the Compute default |

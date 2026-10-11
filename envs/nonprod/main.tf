@@ -5,7 +5,7 @@
 # Network and cluster sit in ONE root while the repo is plan-only: with
 # separate states the cluster layer would read the network layer through remote
 # state, and that cannot be planned before the network is applied. Split into
-# network / cluster layers when the backend in backend.tf is switched on.
+# network / cluster layers once remote state is switched on (docs/state.md).
 ###
 locals {
   name = "gke-practice-nonprod"

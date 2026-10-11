@@ -108,12 +108,13 @@ resource "google_container_cluster" "this" {
     channel = var.release_channel
   }
 
-  # ...but only inside this window. 15:00-19:00 UTC is the small hours in APAC;
-  # three weekdays, so nothing lands on a weekend with nobody watching.
+  # ...but only inside this window: 15:00-19:00 UTC, Monday to Wednesday. Pick
+  # the hours for when the cluster's users are asleep and its operators are not
+  # on a weekend; nothing should land with nobody watching.
   maintenance_policy {
     recurring_window {
-      start_time = "2026-01-01T15:00:00Z"
-      end_time   = "2026-01-01T19:00:00Z"
+      start_time = "2026-01-05T15:00:00Z" # a Monday, matching BYDAY
+      end_time   = "2026-01-05T19:00:00Z"
       recurrence = "FREQ=WEEKLY;BYDAY=MO,TU,WE"
     }
   }
