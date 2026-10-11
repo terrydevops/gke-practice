@@ -1,3 +1,6 @@
 project_id = "my-gcp-project-id"
 region     = "europe-west1"
 zone       = "europe-west1-b"
+
+# Who may connect to the cluster (their rights inside come from RBAC in gitops/).
+# cluster_users = ["user:alice@example.com"]
