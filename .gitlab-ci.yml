@@ -6,9 +6,10 @@
 #   validate : fmt + validate. No GCP access.
 #   plan     : PLAN service account (read-only, cannot reach the API server).
 #              Any branch that changed Terraform.
-#
-# There is no apply job yet. State is remote (docs/state.md), so one can be
-# added: step 6 there has the job and the two gates in front of it.
+#   apply    : APPLY service account. Protected refs only, and a person has to
+#              start it. Two gates stand in front of it: Google only lets a
+#              protected ref impersonate that account (bootstrap/ci), and
+#              GitLab only hands APPLY_SA to protected refs.
 #
 # Terraform here never talks to the Kubernetes API (no helm / kubernetes
 # provider), so every layer can be planned from any branch. In-cluster changes
@@ -23,6 +24,7 @@ default:
 stages:
   - validate
   - plan
+  - apply
 
 variables:
   TF_DIR: envs/nonprod
@@ -37,6 +39,8 @@ variables:
 #   PLAN_SA             e-mail of the read-only plan service account
 #
 #   TF_STATE_BUCKET     state bucket
+#   APPLY_SA            e-mail of the apply service account. Masked AND
+#                       protected, so only protected refs ever see it.
 #
 #   TF_VAR_cluster_users  who may connect, as JSON: ["user:alice@example.com"]
 #   MASK_CLUSTER_USER     the bare address from that list. No job reads it: a
@@ -44,7 +48,7 @@ variables:
 #                         and plan prints the address without the brackets.
 #                         One such variable per address.
 #
-# WIF_PROVIDER and PLAN_SA are outputs of bootstrap/ci; TF_STATE_BUCKET is the
+# WIF_PROVIDER, PLAN_SA and APPLY_SA are outputs of bootstrap/ci; TF_STATE_BUCKET is the
 # output of bootstrap/state.
 
 # bootstrap/ is applied by hand, but a change there is still validated.
@@ -118,3 +122,19 @@ plan:
   script:
     - *wif_init
     - terraform -chdir="$TF_DIR" plan -input=false -lock=false
+
+# Started by hand: read the plan job of the same pipeline first. This job
+# plans again and applies that, so the two differ only if something changed in
+# between. The state lock stops two applies from overlapping.
+apply:
+  extends: .wif
+  stage: apply
+  variables:
+    SERVICE_ACCOUNT: $APPLY_SA
+  rules:
+    - if: '$CI_COMMIT_REF_PROTECTED == "true"'
+      changes: *tf_changes
+      when: manual
+  script:
+    - *wif_init
+    - terraform -chdir="$TF_DIR" apply -input=false -auto-approve

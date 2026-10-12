@@ -2,7 +2,8 @@
 
 **Status: switched on (steps 1 to 5 done on 2026-10-12).** The bucket and the CI identity exist and
 all three roots keep their state in the bucket. `envs/nonprod` has an empty state: nothing in it has
-been applied. Step 6 (an apply job) and everything under "Operating it" have not been run yet.
+been applied. The apply job of step 6 is in the pipeline but has never run, and nothing under
+"Operating it" has been tried yet.
 
 ## Design
 
@@ -110,7 +111,8 @@ right to read it.
 
 ### 6. Only now: an apply job
 
-Add to `.gitlab-ci.yml`, with an `APPLY_SA` CI/CD variable (protected, so only protected refs get it):
+In `.gitlab-ci.yml`, with an `APPLY_SA` CI/CD variable (masked and protected, so only protected refs
+get it):
 
 ```yaml
 apply:
