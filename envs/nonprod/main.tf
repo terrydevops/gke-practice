@@ -40,11 +40,10 @@ module "network" {
 
   # IP plan for this environment. prod gets different blocks, so the two can be
   # peered or share a VPN later without renumbering.
-  nodes_cidr         = "10.10.0.0/22" # ~1000 node and internal-LB addresses
-  pods_cidr          = "10.20.0.0/16" # a /24 per node -> ~256 nodes; the real ceiling
-  services_cidr      = "10.30.0.0/20"
-  proxy_only_cidr    = "10.40.0.0/23"
-  control_plane_cidr = "10.50.0.0/28"
+  nodes_cidr      = "10.10.0.0/22" # ~1000 node and internal-LB addresses; the control plane's too
+  pods_cidr       = "10.20.0.0/16" # a /24 per node -> ~256 nodes; the real ceiling
+  services_cidr   = "10.30.0.0/20"
+  proxy_only_cidr = "10.40.0.0/23"
 
   depends_on = [google_project_service.this]
 }
@@ -61,9 +60,7 @@ module "cluster" {
   pods_range_name     = module.network.pods_range_name
   services_range_name = module.network.services_range_name
 
-  control_plane_subnetwork_id = module.network.control_plane_subnetwork_id
-  control_plane_cidr          = module.network.control_plane_cidr
-  proxy_only_cidr             = module.network.proxy_only_cidr
+  proxy_only_cidr = module.network.proxy_only_cidr
 
   release_channel     = "REGULAR"
   deletion_protection = false # practice cluster; prod leaves the default (true)

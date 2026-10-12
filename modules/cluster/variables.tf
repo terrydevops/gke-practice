@@ -27,16 +27,6 @@ variable "services_range_name" {
   type = string
 }
 
-variable "control_plane_subnetwork_id" {
-  description = "Subnet that holds the control plane's internal endpoint."
-  type        = string
-}
-
-variable "control_plane_cidr" {
-  description = "Range of that subnet. Source of control plane -> node traffic in the webhook firewall rule."
-  type        = string
-}
-
 variable "proxy_only_cidr" {
   description = "Range of the proxy-only subnet; source of traffic from internal / regional load balancers."
   type        = string
@@ -72,12 +62,6 @@ variable "min_nodes" {
 variable "max_nodes" {
   type    = number
   default = 3
-}
-
-variable "webhook_ports" {
-  description = "Ports of admission webhooks served by pods (CloudNativePG 9443, many operators 8443). GKE itself only opens 443 and 10250 from the control plane."
-  type        = list(string)
-  default     = ["8443", "9443"]
 }
 
 variable "backend_ports" {

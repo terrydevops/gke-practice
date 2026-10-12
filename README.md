@@ -18,7 +18,7 @@ gke-practice/
 │                       # branch), apply SA (protected refs only), access to the state bucket
 ├── modules/
 │   ├── network/
-│   │   ├── main.tf     # VPC and its subnets: nodes (+ pod / service ranges), control plane, proxy-only
+│   │   ├── main.tf     # VPC and its subnets: nodes (+ pod / service ranges), proxy-only
 │   │   ├── nat.tf      # Cloud NAT on reserved static IPs, node subnet only
 │   │   └── firewall.tf # VPC baseline: logged default-deny for ingress AND egress
 │   └── cluster/

@@ -26,11 +26,6 @@ variable "services_cidr" {
   type        = string
 }
 
-variable "control_plane_cidr" {
-  description = "/28 subnet for the control plane's internal endpoint."
-  type        = string
-}
-
 variable "proxy_only_cidr" {
   description = "Proxy-only subnet for Google-managed Envoy load balancers (internal / regional Gateways). Google recommends a /23."
   type        = string

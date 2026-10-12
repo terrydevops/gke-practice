@@ -1,7 +1,7 @@
 ###
 # Network module — GCP only. A dedicated custom-mode VPC for one environment:
 #
-#   main.tf      VPC and its three subnets (nodes, control plane, proxy-only)
+#   main.tf      VPC and its two subnets (nodes, proxy-only)
 #   nat.tf       Cloud NAT on reserved static IPs, for the node subnet only
 #   firewall.tf  VPC-wide baseline: logged default-deny in BOTH directions
 #
@@ -54,15 +54,9 @@ resource "google_compute_subnetwork" "nodes" {
   }
 }
 
-# Where the control plane's internal endpoint lives. Declared here, not left
-# for GKE to create from a bare CIDR, so every subnet in this VPC is in
-# Terraform state and in the IP plan.
-resource "google_compute_subnetwork" "control_plane" {
-  name          = "${var.name}-control-plane"
-  region        = var.region
-  network       = google_compute_network.this.id
-  ip_cidr_range = var.control_plane_cidr
-}
+# There is no subnet for the control plane. With only the DNS-based endpoint
+# switched on, GKE puts the control plane's internal address in the node subnet
+# (seen as 10.10.0.2 in nonprod) and ignores a subnet offered for it.
 
 # Google-managed Envoy proxies (internal / regional Application Load Balancers,
 # i.e. the internal and regional GKE Gateway classes) take their IPs from here.

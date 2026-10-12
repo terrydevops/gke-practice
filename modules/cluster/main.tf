@@ -39,11 +39,12 @@ resource "google_container_cluster" "this" {
     services_secondary_range_name = var.services_range_name
   }
 
-  # "Isolate your nodes from the internet": no external IPs on nodes. The
-  # control plane's internal endpoint takes an address from a subnet we own.
+  # "Isolate your nodes from the internet": no external IPs on nodes.
+  # No private_endpoint_subnetwork: with the IP endpoints off (below) GKE does
+  # not use one, never reports it back, and Terraform would then want to
+  # replace the cluster on every plan.
   private_cluster_config {
-    enable_private_nodes        = true
-    private_endpoint_subnetwork = var.control_plane_subnetwork_id
+    enable_private_nodes = true
   }
 
   # "Use only the DNS-based endpoint to access your control plane". kubectl and

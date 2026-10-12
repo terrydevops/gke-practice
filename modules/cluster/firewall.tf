@@ -1,31 +1,19 @@
 ###
 # Ingress to the nodes. The VPC baseline (network module) denies and logs
-# everything; GKE adds its own rules for node <-> node, pod <-> node and
-# control plane -> kubelet (TCP 443, 10250). Anything else is opened here, one
-# rule per reason.
+# everything; GKE adds its own rules for node <-> node and pod <-> node.
+# Anything else is opened here, one rule per reason.
+#
+# Nothing is opened for the control plane. It has no range of its own here (its
+# internal address is in the node subnet) and GKE creates no control-plane
+# rule; it reaches the nodes through the Konnectivity tunnel, which the nodes
+# open outwards. Admission webhooks are expected to arrive the same way, from
+# inside the cluster. Not yet proven here: no webhook has been installed.
 #
 # Rules select the nodes by SERVICE ACCOUNT, not by network tag: a tag can be
 # put on any VM by whoever may edit instances, a service account cannot be
 # borrowed that way. Same idea as referencing a security group instead of a
 # CIDR.
 ###
-
-# The API server calls admission webhooks on the pod's own port. Without this
-# rule, creating a resource guarded by a webhook hangs and times out.
-resource "google_compute_firewall" "control_plane_webhooks" {
-  name      = "${var.cluster_name}-allow-control-plane-webhooks"
-  network   = var.network_id
-  direction = "INGRESS"
-  priority  = 1000
-
-  source_ranges           = [var.control_plane_cidr]
-  target_service_accounts = [google_service_account.nodes.email]
-
-  allow {
-    protocol = "tcp"
-    ports    = var.webhook_ports
-  }
-}
 
 # Internal / regional load balancers: the Envoy proxies connect from the
 # proxy-only subnet straight to pod IPs (container-native load balancing).
