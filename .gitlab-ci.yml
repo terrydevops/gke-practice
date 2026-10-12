@@ -36,7 +36,13 @@ variables:
 #   WIF_PROVIDER        projects/<number>/locations/global/workloadIdentityPools/<pool>/providers/<provider>
 #   PLAN_SA             e-mail of the read-only plan service account
 #
-#   TF_STATE_BUCKET     state bucket; only needed once remote state is on
+#   TF_STATE_BUCKET     state bucket
+#
+#   TF_VAR_cluster_users  who may connect, as JSON: ["user:alice@example.com"]
+#   MASK_CLUSTER_USER     the bare address from that list. No job reads it: a
+#                         masked value is only hidden where it appears whole,
+#                         and plan prints the address without the brackets.
+#                         One such variable per address.
 #
 # WIF_PROVIDER and PLAN_SA are outputs of bootstrap/ci; TF_STATE_BUCKET is the
 # output of bootstrap/state.
