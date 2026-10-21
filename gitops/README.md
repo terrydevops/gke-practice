@@ -2,7 +2,9 @@
 
 Terraform stops at the cluster boundary. From here on, git is the source of truth and Flux reconciles
 the cluster to it. Nothing in this directory has run on a cluster yet: it is checked with
-`kustomize build` and `flux build --dry-run` only.
+`kustomize build` and `flux build --dry-run` only. In CI, `validate-gitops` renders every kustomize
+directory and checks each object with kubeconform (Kubernetes 1.35 and Flux schemas, unknown fields
+rejected).
 
 ## Layout
 
@@ -123,8 +125,6 @@ After that, a change is a merge to `main`; nobody runs `kubectl apply`.
 
 ## Gaps
 
-- No CI check for this directory. A `kustomize build` / `flux build` job would catch a broken manifest
-  before Flux does.
 - `flux bootstrap` writes the repository URL into `flux-system/gotk-sync.yaml`, in git.
 - whoami has no route from outside yet (a Gateway on the proxy-only subnet), and no VPA object: vertical
   Pod autoscaling is not switched on in the cluster module.

@@ -37,7 +37,8 @@ gke-practice/
 │   ├── tenants/base/       # platform-owned: the fence stamped around each tenant
 │   └── apps/               # tenant-owned: whoami base + dev / staging
 ├── docs/state.md       # where state and locks live, how to switch them on, how to recover
-└── .gitlab-ci.yml      # validate -> plan (any branch) -> apply (main only, started by hand)
+└── .gitlab-ci.yml      # validate -> plan (any branch) -> apply (main only, started by hand);
+                        # validate-gitops: render + schema check of gitops/
 ```
 
 Still to add: a PostgreSQL cluster on CloudNativePG with WAL archiving to GCS and a restore drill,
