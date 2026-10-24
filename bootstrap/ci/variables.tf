@@ -8,14 +8,15 @@ variable "tfstate_bucket" {
   type        = string
 }
 
-# Numeric IDs, not paths: a path can be renamed or re-registered by someone
-# else, an ID cannot. Both are on the project's / group's GitLab overview page.
-variable "gitlab_namespace_id" {
-  description = "Numeric ID of the GitLab group or user namespace that owns the repository."
+# Numeric IDs, not names: a name can be renamed or re-registered by someone
+# else, an ID cannot. `gh api repos/<owner>/<repo> --jq '.owner.id, .id'`
+# prints both.
+variable "github_owner_id" {
+  description = "Numeric ID of the GitHub user or organization that owns the repository."
   type        = string
 }
 
-variable "gitlab_project_id" {
-  description = "Numeric ID of the GitLab project."
+variable "github_repository_id" {
+  description = "Numeric ID of the GitHub repository."
   type        = string
 }

@@ -1,0 +1,143 @@
+###
+# CI/CD — Terraform through GitHub OIDC and Workload Identity Federation. No
+# service-account keys anywhere: repository secrets hold identifiers, never
+# credentials. Identities come from bootstrap/ci.
+#
+#   validate : fmt + validate. No GCP access.
+#   plan     : PLAN service account (read-only, cannot reach the API server).
+#              Any branch that changed Terraform.
+#   apply    : APPLY service account. Started by hand (Run workflow) on main.
+#              Google only lets a token for refs/heads/main impersonate that
+#              account (bootstrap/ci), so the `if` below is a convenience; the
+#              gate is in IAM, where a workflow file cannot change it.
+#
+# Terraform here never talks to the Kubernetes API (no helm / kubernetes
+# provider), so every layer can be planned from any branch. In-cluster changes
+# are Flux's job: they run gitops.yml only, and Flux applies them after the
+# merge.
+#
+# Nothing that identifies the real environment is committed. Set these in
+# Settings > Secrets and variables > Actions > Repository secrets (secrets, not
+# variables, so they are also hidden in logs):
+#
+#   TF_VAR_PROJECT_ID     GCP project ID
+#   TF_VAR_REGION         e.g. europe-west1
+#   TF_VAR_ZONE           e.g. europe-west1-b
+#   TF_VAR_CLUSTER_USERS  who may connect, as JSON: ["user:alice@example.com"]
+#                         Each address is masked on its own as well: plan
+#                         prints it without the brackets, and a secret is only
+#                         hidden where it appears whole.
+#   WIF_PROVIDER          projects/<number>/locations/global/workloadIdentityPools/<pool>/providers/<provider>
+#   PLAN_SA               e-mail of the read-only plan service account
+#   APPLY_SA              e-mail of the apply service account
+#   TF_STATE_BUCKET       state bucket
+#
+# WIF_PROVIDER, PLAN_SA and APPLY_SA are outputs of bootstrap/ci; TF_STATE_BUCKET is the
+# output of bootstrap/state.
+###
+name: terraform
+
+on:
+  push:
+    # bootstrap/ is applied by hand, but a change there is still validated.
+    paths:
+      - envs/**
+      - modules/**
+      - bootstrap/**
+      - .github/workflows/terraform.yml
+  workflow_dispatch: # Run workflow: validate, plan, then apply (main only)
+
+permissions:
+  contents: read
+
+env:
+  TF_DIR: envs/nonprod
+  TF_IN_AUTOMATION: "true"
+  TERRAFORM_VERSION: 1.16.5
+
+jobs:
+  validate:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: hashicorp/setup-terraform@dfe3c3f87815947d99a8997f908cb6525fc44e9e # v4.0.1
+        with:
+          terraform_version: ${{ env.TERRAFORM_VERSION }}
+          terraform_wrapper: false
+      - run: terraform fmt -check -recursive .
+      - run: |
+          for d in bootstrap/state bootstrap/ci envs/nonprod; do
+            echo "== validate $d =="
+            terraform -chdir="$d" init -backend=false -input=false
+            terraform -chdir="$d" validate
+          done
+
+  plan:
+    needs: validate
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: read
+      id-token: write # the OIDC token that is exchanged for the plan account
+    env: &tf_env
+      TF_VAR_project_id: ${{ secrets.TF_VAR_PROJECT_ID }}
+      TF_VAR_region: ${{ secrets.TF_VAR_REGION }}
+      TF_VAR_zone: ${{ secrets.TF_VAR_ZONE }}
+      TF_VAR_cluster_users: ${{ secrets.TF_VAR_CLUSTER_USERS }}
+      TF_STATE_BUCKET: ${{ secrets.TF_STATE_BUCKET }}
+    steps:
+      - &mask_users
+        name: Mask each cluster user
+        run: |
+          printf '%s' "${TF_VAR_cluster_users:-[]}" | jq -r '.[] | sub("^[a-z]+:"; "")' |
+            while read -r u; do echo "::add-mask::$u"; done
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: hashicorp/setup-terraform@dfe3c3f87815947d99a8997f908cb6525fc44e9e # v4.0.1
+        with:
+          terraform_version: ${{ env.TERRAFORM_VERSION }}
+          terraform_wrapper: false
+      # Exchanges the GitHub OIDC token at STS and writes a credential file that
+      # impersonates the plan account; the Google provider reads it through
+      # GOOGLE_APPLICATION_CREDENTIALS. No gcloud.
+      - uses: google-github-actions/auth@7c6bc770dae815cd3e89ee6cdf493a5fab2cc093 # v3.0.0
+        with:
+          workload_identity_provider: ${{ secrets.WIF_PROVIDER }}
+          service_account: ${{ secrets.PLAN_SA }}
+      # Remote state switches itself on: once backend.tf exists in the root
+      # (docs/state.md), init needs the bucket, which comes from a secret.
+      - &init
+        name: terraform init
+        run: |
+          if [ -f "$TF_DIR/backend.tf" ]; then
+            terraform -chdir="$TF_DIR" init -input=false -backend-config="bucket=$TF_STATE_BUCKET"
+          else
+            terraform -chdir="$TF_DIR" init -input=false
+          fi
+      - run: terraform -chdir="$TF_DIR" plan -input=false -lock=false
+
+  # Read the plan job of the same run first. This job plans again and applies
+  # that, so the two differ only if something changed in between. The state
+  # lock, and the concurrency group, stop two applies from overlapping.
+  apply:
+    needs: plan
+    if: github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-24.04
+    concurrency:
+      group: terraform-apply
+      cancel-in-progress: false
+    permissions:
+      contents: read
+      id-token: write
+    env: *tf_env
+    steps:
+      - *mask_users
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: hashicorp/setup-terraform@dfe3c3f87815947d99a8997f908cb6525fc44e9e # v4.0.1
+        with:
+          terraform_version: ${{ env.TERRAFORM_VERSION }}
+          terraform_wrapper: false
+      - uses: google-github-actions/auth@7c6bc770dae815cd3e89ee6cdf493a5fab2cc093 # v3.0.0
+        with:
+          workload_identity_provider: ${{ secrets.WIF_PROVIDER }}
+          service_account: ${{ secrets.APPLY_SA }}
+      - *init
+      - run: terraform -chdir="$TF_DIR" apply -input=false -auto-approve

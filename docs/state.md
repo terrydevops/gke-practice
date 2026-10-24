@@ -87,8 +87,8 @@ terraform apply
 terraform output          # workload_identity_provider, plan_service_account, apply_service_account
 ```
 
-Then in GitLab, Settings > CI/CD > Variables (masked, not protected): check `WIF_PROVIDER` and `PLAN_SA`
-against the outputs, and add `TF_STATE_BUCKET`.
+Then in GitHub, Settings > Secrets and variables > Actions > Repository secrets: check `WIF_PROVIDER`
+and `PLAN_SA` against the outputs, and add `TF_STATE_BUCKET`.
 
 ### 4. The environment
 
@@ -103,34 +103,21 @@ This `init` must be run by the owner, before the pipeline ever sees `backend.tf`
 against an empty prefix writes an empty `default.tfstate` (and takes the lock to do it). The plan
 service account can only read the bucket, so it could not do that first write.
 
-### 5. Commit the three renames in one merge request
+### 5. Commit the three renames in one pull request
 
-The pipeline's init step looks for `envs/nonprod/backend.tf`: when it is there, it passes
+The workflow's init step looks for `envs/nonprod/backend.tf`: when it is there, it passes
 `TF_STATE_BUCKET`. So this commit must come after step 3, or the plan job has no bucket to read and no
 right to read it.
 
-### 6. Only now: an apply job
+### 6. Only now: the apply job
 
-In `.gitlab-ci.yml`, with an `APPLY_SA` CI/CD variable (masked and protected, so only protected refs
-get it):
+`.github/workflows/terraform.yml` has an `apply` job that runs only when someone starts the workflow by
+hand (Actions > terraform > Run workflow) on `main`. Add the `APPLY_SA` repository secret.
 
-```yaml
-apply:
-  extends: .wif
-  stage: apply
-  variables:
-    SERVICE_ACCOUNT: $APPLY_SA
-  rules:
-    - if: '$CI_COMMIT_REF_PROTECTED == "true"'
-      changes: *tf_changes
-      when: manual
-  script:
-    - *wif_init
-    - terraform -chdir="$TF_DIR" apply -input=false -auto-approve
-```
-
-and `apply` to `stages`. Two gates then stand in front of it: Google only lets a protected ref
-impersonate the apply service account, and GitLab only hands `APPLY_SA` to protected refs.
+The gate is in IAM, not in the workflow: Google only lets a token whose `ref` is `refs/heads/main`
+impersonate the apply service account (bootstrap/ci). GitHub tokens carry no "protected ref" claim, and
+on a private repository without a paid plan there are no environment branch rules or required
+reviewers, so whoever can push to `main` can apply. Keep `main` writable by the owner only.
 
 ### Later: split network and cluster
 

@@ -14,8 +14,8 @@ cluster, 24 resources) has been planned but never applied.
 gke-practice/
 ├── bootstrap/          # applied once, by a human, in this order
 │   ├── state/          # GCS bucket for Terraform state (and, once created, its own state)
-│   └── ci/             # GitLab Workload Identity Federation: plan SA (read-only, any
-│                       # branch), apply SA (protected refs only), access to the state bucket
+│   └── ci/             # GitHub Actions Workload Identity Federation: plan SA (read-only, any
+│                       # branch), apply SA (main only), access to the state bucket
 ├── modules/
 │   ├── network/
 │   │   ├── main.tf     # VPC and its subnets: nodes (+ pod / service ranges), proxy-only
@@ -37,8 +37,9 @@ gke-practice/
 │   ├── tenants/base/       # platform-owned: the fence stamped around each tenant
 │   └── apps/               # tenant-owned: whoami base + dev / staging
 ├── docs/state.md       # where state and locks live, how to switch them on, how to recover
-└── .gitlab-ci.yml      # validate -> plan (any branch) -> apply (main only, started by hand);
-                        # validate-gitops: render + schema check of gitops/
+└── .github/workflows/
+    ├── terraform.yml   # validate -> plan (any branch) -> apply (main only, started by hand)
+    └── gitops.yml      # render + schema check of gitops/
 ```
 
 Still to add: a PostgreSQL cluster on CloudNativePG with WAL archiving to GCS and a restore drill,
@@ -48,7 +49,7 @@ kube-prometheus-stack with one alert, a route to whoami from outside.
 
 No project ID, account or other environment-specific value is committed. Each root reads them from a
 local `terraform.tfvars` (git-ignored; copy `terraform.tfvars.example`), and the pipeline reads them
-from masked CI/CD variables listed at the top of `.gitlab-ci.yml`.
+from repository secrets listed at the top of `.github/workflows/terraform.yml`.
 
 ## Plan
 

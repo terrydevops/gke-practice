@@ -1,6 +1,6 @@
 output "workload_identity_provider" {
-  description = "Goes into .gitlab-ci.yml as WIF_PROVIDER."
-  value       = google_iam_workload_identity_pool_provider.gitlab.name
+  description = "Goes into the repository secret WIF_PROVIDER."
+  value       = google_iam_workload_identity_pool_provider.github.name
 }
 
 output "plan_service_account" {
