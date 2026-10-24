@@ -106,20 +106,21 @@ kubectl -n flux-system create configmap cluster-vars \
 # 3. Flux installs itself, fills in the two gotk-*.yaml files under
 #    gitops/clusters/nonprod/flux-system/ and commits them. The kustomization.yaml
 #    there (the lockdown patches) is ours and is applied from the first start.
-export GITLAB_TOKEN=<personal access token with api scope; used by this command only>
-flux bootstrap gitlab \
-  --owner=<gitlab namespace> --repository=<repo> --personal \
+export GITHUB_TOKEN=<personal access token; used by this command only>
+flux bootstrap github \
+  --owner=<github user> --repository=<repo> --personal \
   --branch=main --path=gitops/clusters/nonprod \
-  --deploy-token-auth
+  --ssh-hostname=ssh.github.com:443
 ```
 
-`--deploy-token-auth` makes Flux fetch over HTTPS with a project deploy token that bootstrap creates for
-it. Two reasons not to use the other modes:
+Bootstrap creates a read-only deploy key on this one repository and keeps its private half in the
+cluster. `--ssh-hostname` points the sync at GitHub's SSH endpoint on port 443, because the VPC firewall
+only lets nodes reach the outside on TCP 443: plain SSH to github.com:22 would be dropped. The sync URL
+becomes `ssh://git@ssh.github.com:443/<owner>/<repo>`.
 
-- the default is an SSH deploy key, and the VPC firewall only lets nodes reach the outside on TCP 443,
-  so SSH to the Git host would be dropped;
-- `--token-auth` also uses HTTPS, but it stores the personal access token itself in the cluster. A
-  deploy token is scoped to this one project, so what sits in the cluster cannot act as you elsewhere.
+Not `--token-auth`: it also uses port 443, but it stores the personal access token itself in the
+cluster, and that token can act as you on every repository it reaches. A deploy key reaches only this
+one.
 
 After that, a change is a merge to `main`; nobody runs `kubectl apply`.
 
