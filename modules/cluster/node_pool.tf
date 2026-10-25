@@ -28,6 +28,7 @@ resource "google_container_node_pool" "default" {
     machine_type = var.machine_type
     disk_size_gb = 50
     disk_type    = "pd-balanced"
+    spot         = var.spot
 
     service_account = google_service_account.nodes.email
     oauth_scopes    = ["https://www.googleapis.com/auth/cloud-platform"] # IAM decides, not scopes

@@ -45,6 +45,8 @@ module "network" {
   services_cidr   = "10.30.0.0/20"
   proxy_only_cidr = "10.40.0.0/23"
 
+  nat_ip_count = 1 # nobody allow-lists this egress; prod keeps the default two
+
   depends_on = [google_project_service.this]
 }
 
@@ -64,6 +66,7 @@ module "cluster" {
 
   release_channel     = "REGULAR"
   deletion_protection = false # practice cluster; prod leaves the default (true)
+  spot                = true  # practice cluster: reclaims are fine, nothing stateful yet
   labels              = local.labels
 
   # The node service account references nothing in the network module, so
