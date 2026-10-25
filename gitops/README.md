@@ -3,7 +3,7 @@
 Terraform stops at the cluster boundary. From here on, git is the source of truth and Flux reconciles
 the cluster to it. Nothing in this directory has run on a cluster yet: it is checked with
 `kustomize build` and `flux build --dry-run` only. In CI, `.github/workflows/gitops.yml` renders every kustomize
-directory and checks each object with kubeconform (Kubernetes 1.35 and Flux schemas, unknown fields
+directory and checks each object with kubeconform (Kubernetes 1.36 and Flux schemas, unknown fields
 rejected).
 
 ## Layout

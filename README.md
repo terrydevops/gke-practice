@@ -24,13 +24,12 @@ gke-practice/
 │   │   └── firewall.tf # VPC baseline: logged default-deny for ingress AND egress
 │   └── cluster/
 │       ├── main.tf      # private VPC-native GKE Standard, DNS-only control plane endpoint
-│       ├── node_pool.tf # one autoscaled pool
+│       ├── node_pool.tf # one autoscaled pool (Spot in nonprod)
 │       ├── iam.tf       # the nodes' least-privilege service account
 │       └── firewall.tf  # ingress to the nodes, targeted by that service account
 ├── envs/
 │   └── nonprod/        # one shared cluster (dev + staging as namespaces)
 │       ├── main.tf     # APIs, network, cluster
-│       ├── access.tf   # hands cluster access over to bootstrap/ci (removed blocks)
 │       └── backend.tf  # GCS backend; the bucket name is passed at init (docs/state.md)
 ├── gitops/             # everything in-cluster, reconciled by Flux (see gitops/README.md)
 │   ├── clusters/nonprod/   # bootstrap path: Flux lockdown, platform, one block per tenant

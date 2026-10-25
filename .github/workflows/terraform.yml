@@ -102,7 +102,7 @@ jobs:
       - &mask_users
         name: Mask each cluster user
         run: |
-          printf '%s' "${CLUSTER_USERS:-[]}" | jq -r '.[] | sub("^[a-z]+:"; "")' |
+          printf '%s' "${CLUSTER_USERS:-[]}" | jq -r '.[] | sub("^[A-Za-z]+:"; "")' |
             while read -r u; do echo "::add-mask::$u"; done
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - uses: hashicorp/setup-terraform@dfe3c3f87815947d99a8997f908cb6525fc44e9e # v4.0.1

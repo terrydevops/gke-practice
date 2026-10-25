@@ -21,7 +21,7 @@ Status as of 2026-10-25, with the nonprod cluster running. Status words:
 | State moved to S3, bootstrap under its own key | | run (GCS, three prefixes) |
 | dev and staging share one nonprod cluster | namespaces instead of a second control plane and NAT | run |
 | prod in its own account, code only | | open |
-| One command to build, one to tear down | teardown must wait for the load balancer to go, or the certificate stays in use | open: no destroy path at all |
+| One command to build, one to tear down | teardown must wait for the load balancer to go, or the certificate stays in use | run (drill 2): Run workflow with `action=destroy`; nothing is left behind while the cluster creates no cloud resources of its own (no load balancer yet) |
 
 ### 2. CI/CD
 
@@ -130,7 +130,7 @@ next one uses. Each has a check that says it is done.
 | # | Drill | From group | Done when | Adds to the bill |
 |---|---|---|---|---|
 | 1 | **Close the fence.** (done 2026-10-25) Stop a tenant from removing the platform's default-deny policy and from handing its rights to someone else, while it can still manage its own allow rules; try to run a root pod in a tenant namespace | 4, 6, 7 | as the tenant's account: deleting `default-deny-ingress` and creating a RoleBinding are refused, whoami's own policy still reconciles; the root pod is refused by admission | nothing |
-| 2 | **Tear down and rebuild.** A destroy path (manual pipeline job), then the whole bootstrap again from the written steps | 1 | cluster gone with no leftover firewall rules, disks or addresses; rebuilt and all Kustomizations Ready from the README alone | nothing; saves money every night after |
+| 2 | **Tear down and rebuild.** (done 2026-10-25) A destroy path (manual pipeline job), then the whole bootstrap again from the written steps | 1 | cluster gone with no leftover firewall rules, disks or addresses; rebuilt and all Kustomizations Ready from the README alone | nothing; saves money every night after |
 | 3 | **Monitoring.** kube-prometheus-stack through Flux, persistent storage, the control plane false alarms silenced, one alert of our own that fires and resolves | 9 | the alert is seen firing in Alertmanager after its cause is created, and gone after the cause is removed | likely a second node, and a disk |
 | 4 | **Secrets.** External Secrets with Secret Manager through Workload Identity, for the Grafana password | 9 | the password is in neither git nor Terraform state; rotating it in Secret Manager reaches the pod | cents |
 | 5 | **SLO.** Blackbox probe of whoami inside the cluster, Pyrra availability and latency objectives | 10 | scaling whoami to zero burns the budget and the fast-burn alert fires | nothing |

@@ -1,5 +1,5 @@
 ###
-# What a human may do once inside the cluster. IAM (envs/nonprod/access.tf) only
+# What a human may do once inside the cluster. IAM (bootstrap/ci/access.tf) only
 # decides who can REACH the API server; every right in the cluster is a binding
 # in this file, so it is reviewed and has history.
 #
