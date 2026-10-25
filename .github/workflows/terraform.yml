@@ -10,6 +10,9 @@
 #              Google only lets a token for refs/heads/main impersonate that
 #              account (bootstrap/ci), so the `if` below is a convenience; the
 #              gate is in IAM, where a workflow file cannot change it.
+#   destroy  : the same account and gate. Run workflow with action=destroy and
+#              the cluster name in `confirm`. Removes everything in envs/nonprod;
+#              bootstrap/ (state bucket, CI identity, cluster access) stays.
 #
 # Terraform here never talks to the Kubernetes API (no helm / kubernetes
 # provider), so every layer can be planned from any branch. In-cluster changes
@@ -23,10 +26,6 @@
 #   TF_VAR_PROJECT_ID     GCP project ID
 #   TF_VAR_REGION         e.g. europe-west1
 #   TF_VAR_ZONE           e.g. europe-west1-b
-#   TF_VAR_CLUSTER_USERS  who may connect, as JSON: ["user:alice@example.com"]
-#                         Each address is masked on its own as well: plan
-#                         prints it without the brackets, and a secret is only
-#                         hidden where it appears whole.
 #   WIF_PROVIDER          projects/<number>/locations/global/workloadIdentityPools/<pool>/providers/<provider>
 #   PLAN_SA               e-mail of the read-only plan service account
 #   APPLY_SA              e-mail of the apply service account
@@ -45,7 +44,17 @@ on:
       - modules/**
       - bootstrap/**
       - .github/workflows/terraform.yml
-  workflow_dispatch: # Run workflow: validate, plan, then apply (main only)
+  workflow_dispatch: # Run workflow: validate, plan, then apply or destroy (main only)
+    inputs:
+      action:
+        description: apply, or destroy everything in envs/nonprod
+        type: choice
+        options: [apply, destroy]
+        default: apply
+      confirm:
+        description: "destroy only: type the cluster name (gke-practice-nonprod)"
+        type: string
+        default: ""
 
 permissions:
   contents: read
@@ -82,14 +91,8 @@ jobs:
       TF_VAR_project_id: ${{ secrets.TF_VAR_PROJECT_ID }}
       TF_VAR_region: ${{ secrets.TF_VAR_REGION }}
       TF_VAR_zone: ${{ secrets.TF_VAR_ZONE }}
-      TF_VAR_cluster_users: ${{ secrets.TF_VAR_CLUSTER_USERS }}
       TF_STATE_BUCKET: ${{ secrets.TF_STATE_BUCKET }}
     steps:
-      - &mask_users
-        name: Mask each cluster user
-        run: |
-          printf '%s' "${TF_VAR_cluster_users:-[]}" | jq -r '.[] | sub("^[a-z]+:"; "")' |
-            while read -r u; do echo "::add-mask::$u"; done
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - uses: hashicorp/setup-terraform@dfe3c3f87815947d99a8997f908cb6525fc44e9e # v4.0.1
         with:
@@ -119,7 +122,9 @@ jobs:
   # lock, and the concurrency group, stop two applies from overlapping.
   apply:
     needs: plan
-    if: github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/main'
+    if: >-
+      github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/main' &&
+      inputs.action == 'apply'
     runs-on: ubuntu-24.04
     concurrency:
       group: terraform-apply
@@ -129,7 +134,6 @@ jobs:
       id-token: write
     env: *tf_env
     steps:
-      - *mask_users
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - uses: hashicorp/setup-terraform@dfe3c3f87815947d99a8997f908cb6525fc44e9e # v4.0.1
         with:
@@ -141,3 +145,40 @@ jobs:
           service_account: ${{ secrets.APPLY_SA }}
       - *init
       - run: terraform -chdir="$TF_DIR" apply -input=false -auto-approve
+
+  # Plans the destroy and applies exactly that plan. The cluster name in
+  # `confirm` guards against a misclick; it reaches the shell through env, so
+  # what is typed into the form cannot inject commands.
+  destroy:
+    needs: plan
+    if: >-
+      github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/main' &&
+      inputs.action == 'destroy'
+    runs-on: ubuntu-24.04
+    concurrency:
+      group: terraform-apply
+      cancel-in-progress: false
+    permissions:
+      contents: read
+      id-token: write
+    env: *tf_env
+    steps:
+      - name: Confirm
+        env:
+          CONFIRM: ${{ inputs.confirm }}
+        run: |
+          if [ "$CONFIRM" != "gke-practice-nonprod" ]; then
+            echo "::error::confirm must be the cluster name"; exit 1
+          fi
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: hashicorp/setup-terraform@dfe3c3f87815947d99a8997f908cb6525fc44e9e # v4.0.1
+        with:
+          terraform_version: ${{ env.TERRAFORM_VERSION }}
+          terraform_wrapper: false
+      - uses: google-github-actions/auth@7c6bc770dae815cd3e89ee6cdf493a5fab2cc093 # v3.0.0
+        with:
+          workload_identity_provider: ${{ secrets.WIF_PROVIDER }}
+          service_account: ${{ secrets.APPLY_SA }}
+      - *init
+      - run: terraform -chdir="$TF_DIR" plan -destroy -input=false -out=destroy.tfplan
+      - run: terraform -chdir="$TF_DIR" apply -input=false destroy.tfplan

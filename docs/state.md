@@ -38,17 +38,15 @@ service-account keys. Keep it that way; a secret in state would be readable from
 In a fresh copy of this design each root starts with a `backend.tf.disabled`, which Terraform ignores
 until it is renamed to `backend.tf`. Do the steps in this order; each one depends on the one before.
 
-Authenticate as the project owner first. Terraform and the gcs backend both read application-default
-credentials:
+Authenticate as the project owner first, with a named gcloud configuration. Terraform and the gcs
+backend both take an access token from the environment, so nothing falls back to application-default
+credentials (one file for the whole machine, shared by every tool and every project):
 
 ```bash
-gcloud auth application-default login
-gcloud auth application-default set-quota-project <project id>
+export GOOGLE_OAUTH_ACCESS_TOKEN=$(gcloud --configuration=<config> auth print-access-token)
 ```
 
-These credentials are one file for the whole machine, not per gcloud configuration: every other tool
-on this machine that uses application-default credentials will act as this account until you run
-`gcloud auth application-default revoke`.
+The token lasts about an hour; run the line again when Terraform reports expired credentials.
 
 Each root needs its own `terraform.tfvars` (copy `terraform.tfvars.example`). In `bootstrap/ci`,
 `tfstate_bucket` must be the bucket that step 1 creates.

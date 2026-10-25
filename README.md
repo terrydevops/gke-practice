@@ -15,7 +15,8 @@ gke-practice/
 ├── bootstrap/          # applied once, by a human, in this order
 │   ├── state/          # GCS bucket for Terraform state (and, once created, its own state)
 │   └── ci/             # GitHub Actions Workload Identity Federation: plan SA (read-only, any
-│                       # branch), apply SA (main only), access to the state bucket
+│                       # branch), apply SA (main only), access to the state bucket; and who
+│                       # may connect to the cluster (IAM), which must outlive a teardown
 ├── modules/
 │   ├── network/
 │   │   ├── main.tf     # VPC and its subnets: nodes (+ pod / service ranges), proxy-only
@@ -29,7 +30,7 @@ gke-practice/
 ├── envs/
 │   └── nonprod/        # one shared cluster (dev + staging as namespaces)
 │       ├── main.tf     # APIs, network, cluster
-│       ├── access.tf   # who may connect to the cluster (IAM); rights inside are RBAC
+│       ├── access.tf   # hands cluster access over to bootstrap/ci (removed blocks)
 │       └── backend.tf  # GCS backend; the bucket name is passed at init (docs/state.md)
 ├── gitops/             # everything in-cluster, reconciled by Flux (see gitops/README.md)
 │   ├── clusters/nonprod/   # bootstrap path: Flux lockdown, platform, one block per tenant
@@ -53,13 +54,19 @@ from repository secrets listed at the top of `.github/workflows/terraform.yml`.
 
 ## Plan
 
+No gcloud configuration is active by default, so every command names its account. Terraform does
+not read application-default credentials; it gets a token from a named gcloud configuration:
+
 ```bash
-gcloud auth application-default login      # once; Terraform reads these credentials
+export GOOGLE_OAUTH_ACCESS_TOKEN=$(gcloud --configuration=<config> auth print-access-token)  # ~1 hour
 cd envs/nonprod
 cp terraform.tfvars.example terraform.tfvars   # then fill in your own values
 terraform init -backend-config="bucket=<state bucket>"   # the output of bootstrap/state
 terraform plan
 ```
+
+Apply and destroy run in CI (Run workflow on `main`); see `gitops/README.md` for the teardown and the
+rebuild.
 
 ## EKS → GKE map
 

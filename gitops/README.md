@@ -96,13 +96,21 @@ Two values belong to one real environment: who the cluster admin is, and the pro
 refer to them as `${cluster_admin}` and `${proxy_only_cidr}`; Flux fills them in from a ConfigMap that
 is created once, from Terraform outputs.
 
-## Bootstrap (not run yet)
+## Bootstrap
 
 Needs a cluster, and a user who is project owner (cluster-admin through IAM) for this one step.
+No gcloud configuration is active by default, so the account is named explicitly.
 
 ```bash
-# 1. kubeconfig through the DNS endpoint
+export CLOUDSDK_ACTIVE_CONFIG_NAME=<gcloud configuration>   # this shell only
+export GOOGLE_OAUTH_ACCESS_TOKEN=$(gcloud auth print-access-token)   # for terraform output
+
+# 1. kubeconfig through the DNS endpoint, then pin it to the account: the auth
+#    plugin otherwise follows whichever configuration is active, and its token
+#    cache, which can hold another account's token.
 $(terraform -chdir=envs/nonprod output -raw get_credentials)
+kubectl config set-credentials "$(kubectl config view --minify -o jsonpath='{.users[0].name}')" \
+  --exec-arg="--account=$(gcloud config get account)"
 
 # 2. the values Flux substitutes, before anything reconciles
 kubectl create namespace flux-system
@@ -130,6 +138,27 @@ cluster, and that token can act as you on every repository it reaches. A deploy 
 one.
 
 After that, a change is a merge to `main`; nobody runs `kubectl apply`.
+
+## Tear down and rebuild
+
+Tear down: Actions > terraform > Run workflow on `main`, `action` = `destroy`, `confirm` = the cluster
+name. It deletes everything in `envs/nonprod`: cluster, node pool, VPC, NAT and its addresses, firewall
+rules, node service account. What stays is `bootstrap/` (state bucket, CI identity, who may connect).
+
+Nothing in the cluster creates cloud resources of its own yet (no load balancer, no PersistentVolume).
+Once something does, remove it through git first and let Flux delete it, or the destroy leaves it behind
+or fails on it. Check that nothing is left:
+
+```bash
+for r in firewall-rules disks addresses forwarding-rules network-endpoint-groups target-pools; do
+  gcloud --configuration=<config> compute $r list --format='value(name)'
+done
+```
+
+Only the `default-allow-*` rules of the project's `default` VPC should be listed.
+
+Rebuild: Run workflow on `main` with `action` = `apply`, then the three Bootstrap steps above. The
+deploy key of the old cluster stays on GitHub with nothing left to use it; bootstrap adds a new one.
 
 ## Gaps
 
