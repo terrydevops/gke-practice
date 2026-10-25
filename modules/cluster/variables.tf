@@ -64,6 +64,12 @@ variable "max_nodes" {
   default = 3
 }
 
+variable "spot" {
+  description = "Run the node pool on Spot VMs: much cheaper, but Google can reclaim a node with 30 s notice and PDBs are not honoured. Keep false for prod."
+  type        = bool
+  default     = false
+}
+
 variable "backend_ports" {
   description = "Container ports that internal / regional load balancers may reach."
   type        = list(string)

@@ -62,7 +62,7 @@ Status as of 2026-10-25, with the nonprod cluster running. Status words:
 | Karpenter: controller, CRDs, NodePool | cloud side in Terraform, controller in GitOps | in git: node pool autoscaling 1 to 3, never triggered |
 | IMDSv2 hop limit 1 | pods cannot borrow node credentials | in git (`GKE_METADATA`), not attacked |
 | Load balancer controller crash loop | hop limit 1 blocked its discovery | n/a |
-| Node termination handler | only for the managed node group | open: no spot pool, no drain drill |
+| Node termination handler | only for the managed node group | open: the only pool is Spot (reclaims handled by GKE), no drain drill |
 | Bottlerocket | | n/a: Container-Optimized OS |
 
 ### 6. Workload hardening
@@ -135,7 +135,7 @@ next one uses. Each has a check that says it is done.
 | 4 | **Secrets.** External Secrets with Secret Manager through Workload Identity, for the Grafana password | 9 | the password is in neither git nor Terraform state; rotating it in Secret Manager reaches the pod | cents |
 | 5 | **SLO.** Blackbox probe of whoami inside the cluster, Pyrra availability and latency objectives | 10 | scaling whoami to zero burns the budget and the fast-burn alert fires | nothing |
 | 6 | **Chaos.** Chaos Mesh with pod kill, network delay, CPU stress; experiments in git, started by hand | 10 | each experiment shows on the SLO dashboard and the service recovers without help | nothing |
-| 7 | **Elasticity.** Force a scale-out, drain a node against the PDB, add a second zone, then a spot pool | 5, 6 | pending pods bring a node; the drain never takes whoami below its budget; replicas land in both zones | a node or two for the length of the drill |
+| 7 | **Elasticity.** Force a scale-out, drain a node against the PDB, add a second zone, then split into an on-demand pool for system pods and the Spot pool | 5, 6 | pending pods bring a node; the drain never takes whoami below its budget; replicas land in both zones | a node or two for the length of the drill |
 | 8 | **PostgreSQL.** A CloudNativePG cluster, WAL archive to GCS through Workload Identity, restore to a point in time | new | a row written before the "accident" is back after the restore, and the time it took is written down | disks and a bucket |
 | 9 | **Route from outside.** Static address and certificate in Terraform, Gateway and HTTPRoute in Flux | 8 | whoami answers from the internet; teardown (drill 2) still leaves nothing behind | a load balancer and an address (price not looked up) |
 | 10 | **Policy.** Kyverno scoped to tenant namespaces; VPA switched on in Terraform, recommend-only | 6, 7 | a bad manifest is refused with a readable message; Flux stays Ready with the webhook in place | nothing |
