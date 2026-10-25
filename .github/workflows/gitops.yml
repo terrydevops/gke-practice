@@ -20,9 +20,14 @@ on:
 permissions:
   contents: read
 
+concurrency:
+  group: gitops-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
   validate:
     runs-on: ubuntu-24.04
+    timeout-minutes: 10
     env:
       KUBERNETES_VERSION: "1.36.4" # the cluster's version
       KUSTOMIZE_VERSION: v5.8.2
@@ -33,6 +38,8 @@ jobs:
       FLUX_SCHEMAS_SHA256: 91a555810a37a61b021d0a7334d5623783d267a7ecbbff7d5a00e8c7df9c0d33
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
       - name: Install kustomize, kubeconform and the Flux schemas
         working-directory: ${{ runner.temp }}
         run: |

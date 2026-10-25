@@ -1,0 +1,11 @@
+# Accepted IaC scan findings (docs/ci-standard.md T3). Each entry has a reason
+# and an expiry; the weekly run fails once an entry expires.
+misconfigurations:
+  # Authorized networks guard the control plane's IP endpoints. Both are off
+  # (modules/cluster/main.tf, control_plane_endpoints_config): the only way in
+  # is the DNS endpoint, authorised by IAM, then RBAC.
+  - id: GCP-0061
+    paths:
+      - modules/cluster/main.tf
+    statement: IP endpoints disabled, DNS endpoint only
+    expired_at: 2027-04-25

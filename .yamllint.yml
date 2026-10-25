@@ -1,0 +1,16 @@
+# yamllint for every YAML file (docs/ci-standard.md B7). The default rules,
+# set to this repo's own style where it differs.
+extends: default
+ignore: |
+  gitops/clusters/nonprod/flux-system/gotk-components.yaml
+rules:
+  line-length: disable
+  document-start: disable
+  comments:
+    min-spaces-from-content: 1
+  comments-indentation: disable
+  braces:
+    max-spaces-inside: 1
+  truthy:
+    allowed-values: ["true", "false"]
+    check-keys: false # `on:` in workflows

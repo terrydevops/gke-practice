@@ -1,0 +1,72 @@
+###
+# Weekly drift check (docs/ci-standard.md T8): plan envs/nonprod as the
+# read-only PLAN account and fail if the cloud no longer matches the code, for
+# example after an edit in the console. The plan is in the job summary.
+#
+# A torn-down environment (empty state, drill 2) is not drift: it is reported
+# and the run passes.
+###
+name: drift
+
+on:
+  schedule:
+    - cron: "41 4 * * 1" # Monday 04:41 UTC, after security.yml
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: drift
+  cancel-in-progress: true
+
+env:
+  TF_DIR: envs/nonprod
+  TF_IN_AUTOMATION: "true"
+  TERRAFORM_VERSION: 1.16.5
+
+jobs:
+  plan:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    permissions:
+      contents: read
+      id-token: write
+    env:
+      TF_VAR_project_id: ${{ secrets.TF_VAR_PROJECT_ID }}
+      TF_VAR_region: ${{ secrets.TF_VAR_REGION }}
+      TF_VAR_zone: ${{ secrets.TF_VAR_ZONE }}
+      TF_STATE_BUCKET: ${{ secrets.TF_STATE_BUCKET }}
+      CLUSTER_USERS: ${{ secrets.TF_VAR_CLUSTER_USERS }}
+    steps:
+      - name: Mask each cluster user
+        run: |
+          printf '%s' "${CLUSTER_USERS:-[]}" | jq -r '.[] | sub("^[A-Za-z]+:"; "")' |
+            while read -r u; do echo "::add-mask::$u"; done
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: hashicorp/setup-terraform@dfe3c3f87815947d99a8997f908cb6525fc44e9e # v4.0.1
+        with:
+          terraform_version: ${{ env.TERRAFORM_VERSION }}
+          terraform_wrapper: false
+      - uses: google-github-actions/auth@7c6bc770dae815cd3e89ee6cdf493a5fab2cc093 # v3.0.0
+        with:
+          workload_identity_provider: ${{ secrets.WIF_PROVIDER }}
+          service_account: ${{ secrets.PLAN_SA }}
+      - run: terraform -chdir="$TF_DIR" init -input=false -backend-config="bucket=$TF_STATE_BUCKET"
+      - name: Plan and compare
+        run: |
+          if [ -z "$(terraform -chdir="$TF_DIR" state list)" ]; then
+            echo "::notice::state is empty: the environment is torn down, nothing to compare"
+            echo "### Drift: torn down (empty state), nothing to compare" >> "$GITHUB_STEP_SUMMARY"
+            exit 0
+          fi
+          rc=0
+          terraform -chdir="$TF_DIR" plan -input=false -lock=false -detailed-exitcode -out=tfplan || rc=$?
+          [ "$rc" -eq 1 ] && exit 1
+          .github/scripts/plan-summary.sh "$TF_DIR" tfplan "Drift check of $TF_DIR"
+          if [ "$rc" -eq 2 ]; then
+            echo "::error::drift: the cloud differs from main, see the job summary"
+            exit 1
+          fi

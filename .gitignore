@@ -2,6 +2,7 @@
 *.tfstate
 *.tfstate.*
 *.tfplan
+tfplan
 crash.log
 .DS_Store
 gha-creds-*.json
