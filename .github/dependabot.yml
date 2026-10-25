@@ -1,0 +1,20 @@
+# Keeps the pins current (docs/ci-standard.md B3): action shas, and the
+# provider versions in each root's .terraform.lock.hcl. A new release waits a
+# week before it is proposed, so a compromised release has time to be pulled.
+version: 2
+updates:
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly
+    cooldown:
+      default-days: 7
+  - package-ecosystem: terraform
+    directories:
+      - /bootstrap/state
+      - /bootstrap/ci
+      - /envs/nonprod
+    schedule:
+      interval: weekly
+    cooldown:
+      default-days: 7

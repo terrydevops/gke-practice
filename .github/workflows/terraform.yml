@@ -7,6 +7,7 @@
 #   plan     : PLAN service account (read-only, cannot reach the API server).
 #              Any branch that changed Terraform.
 #   apply    : APPLY service account. Started by hand (Run workflow) on main.
+#              Applies the plan job's saved plan, nothing planned afresh.
 #              Google only lets a token for refs/heads/main impersonate that
 #              account (bootstrap/ci), so the `if` below is a convenience; the
 #              gate is in IAM, where a workflow file cannot change it.
@@ -62,6 +63,13 @@ on:
 permissions:
   contents: read
 
+# Superseded pushes cancel each other's checks. A Run workflow gets a group of
+# its own, so nothing ever cancels an apply or a destroy (docs/ci-standard.md
+# B10); the terraform-apply group below serialises those.
+concurrency:
+  group: terraform-${{ github.ref }}-${{ github.event_name == 'push' && 'push' || github.run_id }}
+  cancel-in-progress: true
+
 env:
   TF_DIR: envs/nonprod
   TF_IN_AUTOMATION: "true"
@@ -70,8 +78,11 @@ env:
 jobs:
   validate:
     runs-on: ubuntu-24.04
+    timeout-minutes: 10
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
       - uses: hashicorp/setup-terraform@dfe3c3f87815947d99a8997f908cb6525fc44e9e # v4.0.1
         with:
           terraform_version: ${{ env.TERRAFORM_VERSION }}
@@ -87,6 +98,7 @@ jobs:
   plan:
     needs: validate
     runs-on: ubuntu-24.04
+    timeout-minutes: 20
     permissions:
       contents: read
       id-token: write # the OIDC token that is exchanged for the plan account
@@ -105,6 +117,8 @@ jobs:
           printf '%s' "${CLUSTER_USERS:-[]}" | jq -r '.[] | sub("^[A-Za-z]+:"; "")' |
             while read -r u; do echo "::add-mask::$u"; done
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
       - uses: hashicorp/setup-terraform@dfe3c3f87815947d99a8997f908cb6525fc44e9e # v4.0.1
         with:
           terraform_version: ${{ env.TERRAFORM_VERSION }}
@@ -126,17 +140,30 @@ jobs:
           else
             terraform -chdir="$TF_DIR" init -input=false
           fi
-      - run: terraform -chdir="$TF_DIR" plan -input=false -lock=false
+      - run: terraform -chdir="$TF_DIR" plan -input=false -lock=false -out=tfplan
+      - name: Plan to the job summary
+        run: .github/scripts/plan-summary.sh "$TF_DIR" tfplan "Plan of $TF_DIR"
+      # Only when apply follows. A plan file can hold sensitive values in clear
+      # text, readable by anyone who can read this private repo: kept one day.
+      - if: github.event_name == 'workflow_dispatch' && inputs.action == 'apply'
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: tfplan
+          path: ${{ env.TF_DIR }}/tfplan
+          retention-days: 1
+          if-no-files-found: error
 
-  # Read the plan job of the same run first. This job plans again and applies
-  # that, so the two differ only if something changed in between. The state
-  # lock, and the concurrency group, stop two applies from overlapping.
+  # Applies exactly the plan job's saved plan, the one in its summary
+  # (docs/ci-standard.md T6). If the state changed since, Terraform refuses the
+  # stale plan; Run workflow again. The state lock, and the concurrency group,
+  # stop two applies from overlapping.
   apply:
     needs: plan
     if: >-
       github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/main' &&
       inputs.action == 'apply'
     runs-on: ubuntu-24.04
+    timeout-minutes: 60
     concurrency:
       group: terraform-apply
       cancel-in-progress: false
@@ -147,6 +174,8 @@ jobs:
     steps:
       - *mask_users
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
       - uses: hashicorp/setup-terraform@dfe3c3f87815947d99a8997f908cb6525fc44e9e # v4.0.1
         with:
           terraform_version: ${{ env.TERRAFORM_VERSION }}
@@ -156,7 +185,11 @@ jobs:
           workload_identity_provider: ${{ secrets.WIF_PROVIDER }}
           service_account: ${{ secrets.APPLY_SA }}
       - *init
-      - run: terraform -chdir="$TF_DIR" apply -input=false -auto-approve
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: tfplan
+          path: ${{ env.TF_DIR }}
+      - run: terraform -chdir="$TF_DIR" apply -input=false tfplan
 
   # Plans the destroy and applies exactly that plan. The cluster name in
   # `confirm` guards against a misclick; it reaches the shell through env, so
@@ -167,6 +200,7 @@ jobs:
       github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/main' &&
       inputs.action == 'destroy'
     runs-on: ubuntu-24.04
+    timeout-minutes: 60
     concurrency:
       group: terraform-apply
       cancel-in-progress: false
@@ -184,6 +218,8 @@ jobs:
             echo "::error::confirm must be the cluster name"; exit 1
           fi
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
       - uses: hashicorp/setup-terraform@dfe3c3f87815947d99a8997f908cb6525fc44e9e # v4.0.1
         with:
           terraform_version: ${{ env.TERRAFORM_VERSION }}
@@ -194,4 +230,6 @@ jobs:
           service_account: ${{ secrets.APPLY_SA }}
       - *init
       - run: terraform -chdir="$TF_DIR" plan -destroy -input=false -out=destroy.tfplan
+      - name: Destroy plan to the job summary
+        run: .github/scripts/plan-summary.sh "$TF_DIR" destroy.tfplan "Destroy plan of $TF_DIR"
       - run: terraform -chdir="$TF_DIR" apply -input=false destroy.tfplan
