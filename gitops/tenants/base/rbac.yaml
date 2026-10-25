@@ -9,7 +9,9 @@
 # `admin` through a RoleBinding = everything namespaced in this namespace
 # (Deployments, Services, NetworkPolicies, Roles...) and nothing cluster-wide:
 # no Namespaces, no CRDs, no ClusterRoles, no quota. An object that asks for
-# another namespace is refused by the API server.
+# another namespace is refused by the API server. Two parts of `admin` are taken
+# back at admission (infrastructure/configs/tenant-guard.yaml): writing Roles or
+# RoleBindings, and changing or deleting default-deny-ingress.
 ###
 apiVersion: v1
 kind: ServiceAccount

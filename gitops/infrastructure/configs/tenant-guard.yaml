@@ -1,0 +1,78 @@
+###
+# Admission rules for tenant namespaces (label `tenant`). RBAC cannot express
+# these: it only grants, and the tenant must keep its NetworkPolicy rights to
+# apply its own allow rules. Evaluated by the API server itself (CEL), no
+# webhook. Only the platform may touch these objects: the account Flux applies
+# tenants/base with, and kube-system's controllers (namespace deletion, GC).
+# Humans are refused too: the fence changes through git. Break-glass is
+# deleting a binding below.
+###
+apiVersion: admissionregistration.k8s.io/v1
+kind: ValidatingAdmissionPolicy
+metadata:
+  name: tenant-keep-default-deny
+spec:
+  failurePolicy: Fail
+  matchConstraints:
+    resourceRules:
+      - apiGroups: ["networking.k8s.io"]
+        apiVersions: ["v1"]
+        operations: ["UPDATE", "DELETE"]
+        resources: ["networkpolicies"]
+  matchConditions:
+    - name: is-default-deny
+      expression: request.name == "default-deny-ingress"
+    - name: not-platform
+      expression: >-
+        request.userInfo.username != "system:serviceaccount:flux-system:kustomize-controller" &&
+        !("system:serviceaccounts:kube-system" in request.userInfo.groups)
+  validations:
+    - expression: "false"
+      message: default-deny-ingress belongs to the platform (gitops/tenants/base); add allow rules next to it instead
+---
+apiVersion: admissionregistration.k8s.io/v1
+kind: ValidatingAdmissionPolicyBinding
+metadata:
+  name: tenant-keep-default-deny
+spec:
+  policyName: tenant-keep-default-deny
+  validationActions: ["Deny"]
+  matchResources:
+    namespaceSelector:
+      matchExpressions:
+        - key: tenant
+          operator: Exists
+---
+apiVersion: admissionregistration.k8s.io/v1
+kind: ValidatingAdmissionPolicy
+metadata:
+  name: tenant-no-rbac
+spec:
+  failurePolicy: Fail
+  matchConstraints:
+    resourceRules:
+      - apiGroups: ["rbac.authorization.k8s.io"]
+        apiVersions: ["v1"]
+        operations: ["CREATE", "UPDATE", "DELETE"]
+        resources: ["roles", "rolebindings"]
+  matchConditions:
+    - name: not-platform
+      expression: >-
+        request.userInfo.username != "system:serviceaccount:flux-system:kustomize-controller" &&
+        !("system:serviceaccounts:kube-system" in request.userInfo.groups)
+  validations:
+    - expression: "false"
+      message: rights in a tenant namespace are granted by the platform only (gitops/tenants/base/rbac.yaml)
+---
+apiVersion: admissionregistration.k8s.io/v1
+kind: ValidatingAdmissionPolicyBinding
+metadata:
+  name: tenant-no-rbac
+spec:
+  policyName: tenant-no-rbac
+  validationActions: ["Deny"]
+  matchResources:
+    namespaceSelector:
+      matchExpressions:
+        - key: tenant
+          operator: Exists

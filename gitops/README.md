@@ -53,20 +53,27 @@ the two accounts Flux binds to cluster-admin.
 |---|---|
 | Namespace with Pod Security `restricted` | the tenant has no rights on Namespace objects |
 | ResourceQuota + LimitRange | the `admin` role cannot edit quota |
-| default-deny NetworkPolicy | the tenant can add allow rules; the baseline is re-applied if removed |
+| default-deny NetworkPolicy | the tenant can add allow rules; changing or deleting the baseline is refused at admission |
 | ServiceAccount + RoleBinding to `admin`, in its namespace only | nothing cluster-wide, nothing in another namespace |
+| no Role or RoleBinding writes | refused at admission, so the tenant cannot hand its rights to anyone else |
 | the tenant's Flux Kustomization, with `serviceAccountName` and `targetNamespace` | defined by the platform; the tenant only controls the files under its path |
 
 So a manifest under `apps/nonprod/whoami-dev` that tries to create a ClusterRole, a Namespace, or anything in
 `whoami-staging-app` is refused by the API server, because Flux applies it as `whoami-dev`.
 
-Two things this does **not** do:
+The two admission rules are ValidatingAdmissionPolicies in `infrastructure/configs/tenant-guard.yaml`,
+evaluated by the API server itself. They refuse everyone except the platform (`kustomize-controller` and
+kube-system's controllers), humans included.
+
+Three things this does **not** do:
 
 - Git is one repository. Who may change `tenants/` or another tenant's directory is a matter of merge
   request approval rules (CODEOWNERS), not of Flux.
 - Flux aggregates its own CRDs into `admin`, so a tenant may create a Kustomization or HelmRelease in its
   namespace. It gains nothing by it: such an object runs as `default` there and cannot reference a source
   in another namespace.
+- A tenant may still add its own NetworkPolicy that allows all ingress (`ingress: [{}]`). Policies add
+  up, so that cancels the baseline. Limiting what allow rules may open is left to the policy drill.
 
 ## From Argo CD (eks-practice v2) to Flux (here)
 
