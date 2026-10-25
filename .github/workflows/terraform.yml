@@ -26,6 +26,9 @@
 #   TF_VAR_PROJECT_ID     GCP project ID
 #   TF_VAR_REGION         e.g. europe-west1
 #   TF_VAR_ZONE           e.g. europe-west1-b
+#   TF_VAR_CLUSTER_USERS  who may connect, as JSON: ["user:alice@example.com"].
+#                         Only used to mask each address in the logs; the
+#                         access itself is set in bootstrap/ci.
 #   WIF_PROVIDER          projects/<number>/locations/global/workloadIdentityPools/<pool>/providers/<provider>
 #   PLAN_SA               e-mail of the read-only plan service account
 #   APPLY_SA              e-mail of the apply service account
@@ -92,7 +95,15 @@ jobs:
       TF_VAR_region: ${{ secrets.TF_VAR_REGION }}
       TF_VAR_zone: ${{ secrets.TF_VAR_ZONE }}
       TF_STATE_BUCKET: ${{ secrets.TF_STATE_BUCKET }}
+      # Not a Terraform input (cluster access lives in bootstrap/ci), but the
+      # addresses still appear in plans that move or show those objects.
+      CLUSTER_USERS: ${{ secrets.TF_VAR_CLUSTER_USERS }}
     steps:
+      - &mask_users
+        name: Mask each cluster user
+        run: |
+          printf '%s' "${CLUSTER_USERS:-[]}" | jq -r '.[] | sub("^[a-z]+:"; "")' |
+            while read -r u; do echo "::add-mask::$u"; done
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - uses: hashicorp/setup-terraform@dfe3c3f87815947d99a8997f908cb6525fc44e9e # v4.0.1
         with:
@@ -134,6 +145,7 @@ jobs:
       id-token: write
     env: *tf_env
     steps:
+      - *mask_users
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - uses: hashicorp/setup-terraform@dfe3c3f87815947d99a8997f908cb6525fc44e9e # v4.0.1
         with:
@@ -163,6 +175,7 @@ jobs:
       id-token: write
     env: *tf_env
     steps:
+      - *mask_users
       - name: Confirm
         env:
           CONFIRM: ${{ inputs.confirm }}
