@@ -1,6 +1,6 @@
 ###
 # Render what Flux would render, then check every object against its schema:
-# Kubernetes 1.35 for built-in kinds, the Flux release's own schemas for
+# Kubernetes 1.36 for built-in kinds, the Flux release's own schemas for
 # Kustomization / HelmRelease / sources. -strict also rejects unknown fields,
 # so a misspelt key fails here instead of being dropped by the API server.
 # No GCP or cluster access.
@@ -24,7 +24,7 @@ jobs:
   validate:
     runs-on: ubuntu-24.04
     env:
-      KUBERNETES_VERSION: "1.35.8" # the cluster's version
+      KUBERNETES_VERSION: "1.36.4" # the cluster's version
       KUSTOMIZE_VERSION: v5.8.2
       KUSTOMIZE_SHA256: 06af0a202c2b831207d0173f9c9cdb1b30abceca0747cb3fbb72792d26055c95
       KUBECONFORM_VERSION: v0.8.0

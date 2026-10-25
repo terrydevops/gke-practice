@@ -36,16 +36,3 @@ resource "google_project_iam_member" "cluster_connect" {
   role    = google_project_iam_custom_role.cluster_connect.id
   member  = each.value
 }
-
-# Taken over from envs/nonprod's state (see the removed blocks there). Both
-# can go once this root has been applied.
-import {
-  to = google_project_iam_custom_role.cluster_connect
-  id = "projects/${var.project_id}/roles/gkeClusterConnect"
-}
-
-import {
-  for_each = toset(var.cluster_users)
-  to       = google_project_iam_member.cluster_connect[each.value]
-  id       = "${var.project_id} projects/${var.project_id}/roles/gkeClusterConnect ${each.value}"
-}
