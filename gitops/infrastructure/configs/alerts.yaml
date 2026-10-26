@@ -1,0 +1,24 @@
+###
+# Alerts the platform owns about tenant workloads. They use kube-state-metrics,
+# so Prometheus never has to reach into a tenant namespace (default-deny).
+# Applied after infra-controllers, so the PrometheusRule CRD exists.
+###
+apiVersion: monitoring.coreos.com/v1
+kind: PrometheusRule
+metadata:
+  name: tenant-workloads
+  namespace: monitoring
+  annotations:
+    # infra-configs substitutes variables; $labels below is Prometheus's, not Flux's
+    kustomize.toolkit.fluxcd.io/substitute: disabled
+spec:
+  groups:
+    - name: tenant-workloads
+      rules:
+        - alert: WhoamiUnavailable
+          expr: kube_deployment_status_replicas_available{namespace=~"whoami-.+-app", deployment="whoami"} < 1
+          for: 1m
+          labels:
+            severity: warning
+          annotations:
+            summary: "whoami has no available replica in {{ $labels.namespace }}"
