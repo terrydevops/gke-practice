@@ -11,8 +11,8 @@
 # The workload itself lands in cnpg-system through targetNamespace. Tenants
 # cannot do this: they have no objects in flux-system and no such account.
 #
-# Needs the firewall rule in modules/cluster/firewall.tf: the API server calls
-# the operator's admission webhook on port 9443.
+# The API server calls the operator's admission webhook on port 9443 through
+# the Konnectivity tunnel; no firewall rule is needed (modules/cluster/firewall.tf).
 ###
 apiVersion: v1
 kind: Namespace
