@@ -99,12 +99,12 @@ Status as of 2026-10-25, with the nonprod cluster running. Status words:
 | Exercise on EKS | What it taught | Here |
 |---|---|---|
 | metrics-server | | n/a: built in |
-| kube-prometheus-stack | | open |
+| kube-prometheus-stack | | done (drill 3): a Flux HelmRelease, chart pinned |
 | ServiceMonitor and dashboard for Karpenter | a scrape annotation is not monitoring | open |
 | Alertmanager node alerts | | open |
-| Silencing managed control plane alerts | etcd and friends are not exposed | open |
-| Fixed Grafana password | a random one caused a restart loop | open |
-| Prometheus storage and Slack route | | open |
+| Silencing managed control plane alerts | etcd and friends are not exposed | done (drill 3): their scrapes and rules are off; only `Watchdog` fires |
+| Fixed Grafana password | a random one caused a restart loop | not needed: the chart keeps its generated password on upgrade |
+| Prometheus storage and Slack route | | storage done (drill 3): 10Gi for 7 days, Alertmanager 1Gi; no receiver yet |
 | External Secrets for the Grafana password | the secret is in neither git nor state | open |
 
 ### 10. SLO and chaos
@@ -131,7 +131,7 @@ next one uses. Each has a check that says it is done.
 |---|---|---|---|---|
 | 1 | **Close the fence.** (done 2026-10-25) Stop a tenant from removing the platform's default-deny policy and from handing its rights to someone else, while it can still manage its own allow rules; try to run a root pod in a tenant namespace | 4, 6, 7 | as the tenant's account: deleting `default-deny-ingress` and creating a RoleBinding are refused, whoami's own policy still reconciles; the root pod is refused by admission | nothing |
 | 2 | **Tear down and rebuild.** (done 2026-10-25) A destroy path (manual pipeline job), then the whole bootstrap again from the written steps | 1 | cluster gone with no leftover firewall rules, disks or addresses; rebuilt and all Kustomizations Ready from the README alone | nothing; saves money every night after |
-| 3 | **Monitoring.** kube-prometheus-stack through Flux, persistent storage, the control plane false alarms silenced, one alert of our own that fires and resolves | 9 | the alert is seen firing in Alertmanager after its cause is created, and gone after the cause is removed | likely a second node, and a disk |
+| 3 | **Monitoring.** (done 2026-10-26) kube-prometheus-stack through Flux, persistent storage, the control plane false alarms silenced, one alert of our own that fires and resolves | 9 | the alert is seen firing in Alertmanager after its cause is created, and gone after the cause is removed | two disks (10Gi + 1Gi), about USD 1.5 a month; one node was enough (memory 73%) |
 | 4 | **Secrets.** External Secrets with Secret Manager through Workload Identity, for the Grafana password | 9 | the password is in neither git nor Terraform state; rotating it in Secret Manager reaches the pod | cents |
 | 5 | **SLO.** Blackbox probe of whoami inside the cluster, Pyrra availability and latency objectives | 10 | scaling whoami to zero burns the budget and the fast-burn alert fires | nothing |
 | 6 | **Chaos.** Chaos Mesh with pod kill, network delay, CPU stress; experiments in git, started by hand | 10 | each experiment shows on the SLO dashboard and the service recovers without help | nothing |
@@ -155,7 +155,6 @@ Why this order:
 
 Not checked yet, to confirm before the drill that needs it:
 
-- whether one `e2-standard-2` node holds kube-prometheus-stack next to what already runs (drill 3);
 - whether Chaos Mesh's network and stress experiments work on Container-Optimized OS with
   Dataplane V2 (drill 6);
 - a certificate for drill 9 needs a domain name, and there is none yet.

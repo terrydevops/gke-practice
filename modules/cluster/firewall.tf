@@ -6,8 +6,8 @@
 # Nothing is opened for the control plane. It has no range of its own here (its
 # internal address is in the node subnet) and GKE creates no control-plane
 # rule; it reaches the nodes through the Konnectivity tunnel, which the nodes
-# open outwards. Admission webhooks are expected to arrive the same way, from
-# inside the cluster. Not yet proven here: no webhook has been installed.
+# open outwards. Admission webhooks arrive the same way, from inside the
+# cluster: proven in drill 3 with prometheus-operator's webhook.
 #
 # Rules select the nodes by SERVICE ACCOUNT, not by network tag: a tag can be
 # put on any VM by whoever may edit instances, a service account cannot be
