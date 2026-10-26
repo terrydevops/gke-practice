@@ -1,0 +1,106 @@
+###
+# Prometheus, Alertmanager and Grafana (kube-prometheus-stack), plus the
+# operator that turns PrometheusRule / ServiceMonitor objects into config.
+# Same pattern as cloudnative-pg.yaml: the release lives in flux-system and runs
+# as helm-controller; the workload lands in `monitoring`.
+#
+# GKE's own Managed Service for Prometheus (gmp-system) is left as it is: it
+# has nothing to scrape, so it ingests nothing.
+#
+# No UI is exposed; see "Monitoring" in gitops/README.md for port-forward.
+###
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: monitoring
+  labels:
+    # node-exporter needs hostNetwork, hostPID and hostPath mounts
+    pod-security.kubernetes.io/enforce: privileged
+---
+apiVersion: source.toolkit.fluxcd.io/v1
+kind: HelmRepository
+metadata:
+  name: prometheus-community
+  namespace: flux-system
+spec:
+  interval: 12h
+  url: https://prometheus-community.github.io/helm-charts
+---
+apiVersion: helm.toolkit.fluxcd.io/v2
+kind: HelmRelease
+metadata:
+  name: kube-prometheus-stack
+  namespace: flux-system
+spec:
+  interval: 1h
+  timeout: 10m
+  serviceAccountName: helm-controller
+  targetNamespace: monitoring
+  releaseName: kube-prometheus-stack
+  chart:
+    spec:
+      chart: kube-prometheus-stack
+      version: "92.3.0" # pinned; an upgrade is a reviewed change in git
+      sourceRef:
+        kind: HelmRepository
+        name: prometheus-community
+  install:
+    crds: CreateReplace
+    remediation:
+      retries: 3
+  upgrade:
+    crds: CreateReplace
+    remediation:
+      retries: 3
+      remediateLastFailure: true
+  values:
+    # GKE runs the control plane, and Dataplane V2 has no kube-proxy: these
+    # cannot be scraped, and their rules would fire for ever.
+    kubeScheduler: { enabled: false }
+    kubeControllerManager: { enabled: false }
+    kubeEtcd: { enabled: false }
+    kubeProxy: { enabled: false }
+    coreDns: { enabled: false } # GKE runs kube-dns
+    defaultRules:
+      rules:
+        etcd: false
+        kubeControllerManager: false
+        kubeSchedulerAlerting: false
+        kubeSchedulerRecording: false
+        kubeProxy: false
+    prometheus:
+      prometheusSpec:
+        retention: 7d
+        retentionSize: 8GB # below the volume size, so old data goes before the disk fills
+        storageSpec:
+          volumeClaimTemplate:
+            spec:
+              storageClassName: standard-rwo # pd-balanced
+              accessModes: [ReadWriteOnce]
+              resources: { requests: { storage: 10Gi } }
+        # pick up rules and monitors from every namespace, not only this release's
+        ruleSelectorNilUsesHelmValues: false
+        serviceMonitorSelectorNilUsesHelmValues: false
+        podMonitorSelectorNilUsesHelmValues: false
+        resources: { requests: { cpu: 200m, memory: 1Gi }, limits: { memory: 2Gi } }
+    alertmanager:
+      alertmanagerSpec:
+        # silences survive a restart (a Spot reclaim, for example)
+        storage:
+          volumeClaimTemplate:
+            spec:
+              storageClassName: standard-rwo
+              accessModes: [ReadWriteOnce]
+              resources: { requests: { storage: 1Gi } }
+        resources: { requests: { cpu: 20m, memory: 64Mi }, limits: { memory: 128Mi } }
+    grafana:
+      # No adminPassword: the chart generates one into the kube-prometheus-stack-grafana
+      # Secret and keeps it on upgrade. Drill 4 moves it to Secret Manager.
+      persistence: { enabled: false } # dashboards come from the chart
+      resources: { requests: { cpu: 50m, memory: 256Mi }, limits: { memory: 512Mi } }
+    prometheusOperator:
+      resources: { requests: { cpu: 50m, memory: 128Mi }, limits: { memory: 256Mi } }
+    kube-state-metrics:
+      resources: { requests: { cpu: 20m, memory: 64Mi }, limits: { memory: 128Mi } }
+    prometheus-node-exporter:
+      resources: { requests: { cpu: 20m, memory: 32Mi }, limits: { memory: 64Mi } }

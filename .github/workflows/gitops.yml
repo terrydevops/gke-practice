@@ -1,7 +1,8 @@
 ###
 # Render what Flux would render, then check every object against its schema:
 # Kubernetes 1.36 for built-in kinds, the Flux release's own schemas for
-# Kustomization / HelmRelease / sources. -strict also rejects unknown fields,
+# Kustomization / HelmRelease / sources, and the datreeio CRDs-catalog (pinned
+# to a commit) for other CRDs such as PrometheusRule. -strict also rejects unknown fields,
 # so a misspelt key fails here instead of being dropped by the API server.
 # No GCP or cluster access.
 #
@@ -36,6 +37,7 @@ jobs:
       KUBECONFORM_SHA256: 9bc2bffbf71f261128533edaf912153948b7ff238f9a531ae6d34466ec287883
       FLUX_VERSION: "2.9.3" # same as gotk-components.yaml
       FLUX_SCHEMAS_SHA256: 91a555810a37a61b021d0a7334d5623783d267a7ecbbff7d5a00e8c7df9c0d33
+      CRDS_CATALOG: https://raw.githubusercontent.com/datreeio/CRDs-catalog/6e340600b8bfce7a453522e14b4d10f3c74cdc16
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -61,7 +63,8 @@ jobs:
             kubeconform -strict -summary -skip CustomResourceDefinition \
               -kubernetes-version "$KUBERNETES_VERSION" \
               -schema-location default \
-              -schema-location "$RUNNER_TEMP/flux-schemas/{{.ResourceKind}}{{.KindSuffix}}.json" "$@"
+              -schema-location "$RUNNER_TEMP/flux-schemas/{{.ResourceKind}}{{.KindSuffix}}.json" \
+              -schema-location "$CRDS_CATALOG/{{.Group}}/{{.ResourceKind}}_{{.ResourceAPIVersion}}.json" "$@"
           }
           failed=""
           out="$RUNNER_TEMP/out.yaml"
