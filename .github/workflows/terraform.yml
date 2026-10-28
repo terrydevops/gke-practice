@@ -37,6 +37,10 @@
 #
 # WIF_PROVIDER, PLAN_SA and APPLY_SA are outputs of bootstrap/ci; TF_STATE_BUCKET is the
 # output of bootstrap/state.
+#
+# Runs started by Dependabot get only the Dependabot secrets (Settings > Secrets >
+# Dependabot). Those hold the same values minus APPLY_SA, so a dependency PR can
+# plan but never apply.
 ###
 name: terraform
 
