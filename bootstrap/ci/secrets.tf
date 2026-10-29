@@ -63,3 +63,20 @@ resource "google_secret_manager_secret_iam_member" "cloudflared_token" {
   role      = "roles/secretmanager.secretAccessor"
   member    = "${local.ksa_principal}/ns/cloudflared/sa/cloudflared-secrets"
 }
+
+# Where Alertmanager sends alerts: an ntfy topic URL (gitops/infrastructure/
+# configs/alertmanager-ntfy.yaml). The topic name is the only secret, so it is
+# kept here and not in git.
+resource "google_secret_manager_secret" "alertmanager_ntfy" {
+  secret_id = "alertmanager-ntfy-url"
+  replication {
+    auto {}
+  }
+  depends_on = [google_project_service.this]
+}
+
+resource "google_secret_manager_secret_iam_member" "alertmanager_ntfy" {
+  secret_id = google_secret_manager_secret.alertmanager_ntfy.secret_id
+  role      = "roles/secretmanager.secretAccessor"
+  member    = "${local.ksa_principal}/ns/monitoring/sa/alertmanager-secrets"
+}

@@ -1,0 +1,75 @@
+###
+# Where alerts go: an ntfy topic, pushed to a phone by the ntfy app. Until now
+# Alertmanager had no receiver, so alerts reached no one.
+#
+# The topic URL is the secret (anyone who knows it can read the topic). It
+# lives in Secret Manager (bootstrap/ci/secrets.tf), read by
+# alertmanager-secrets only, and reaches Alertmanager through an
+# AlertmanagerConfig: the operator renders it into the config, so a missing
+# secret skips this receiver instead of stopping Alertmanager.
+#
+# Its own Flux block (clusters/nonprod/infrastructure.yaml), so a secret with
+# no version yet holds up nothing else. Body: Alertmanager's webhook JSON.
+###
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: alertmanager-secrets
+  namespace: monitoring
+---
+apiVersion: external-secrets.io/v1
+kind: SecretStore
+metadata:
+  name: gcp-secret-manager-alerting
+  namespace: monitoring
+spec:
+  provider:
+    gcpsm:
+      auth:
+        workloadIdentity:
+          serviceAccountRef:
+            name: alertmanager-secrets
+---
+apiVersion: external-secrets.io/v1
+kind: ExternalSecret
+metadata:
+  name: alertmanager-ntfy
+  namespace: monitoring
+spec:
+  refreshInterval: 1h
+  secretStoreRef:
+    kind: SecretStore
+    name: gcp-secret-manager-alerting
+  target:
+    name: alertmanager-ntfy
+  data:
+    - secretKey: url
+      remoteRef:
+        key: alertmanager-ntfy-url
+---
+# In Alertmanager's own namespace, so with the OnNamespaceExceptFor...
+# strategy (kube-prometheus-stack.yaml) it matches alerts from every
+# namespace. Watchdog has severity "none" and stays out.
+apiVersion: monitoring.coreos.com/v1alpha1
+kind: AlertmanagerConfig
+metadata:
+  name: ntfy
+  namespace: monitoring
+spec:
+  route:
+    receiver: ntfy
+    groupBy: [alertname, namespace]
+    groupWait: 30s
+    groupInterval: 5m
+    repeatInterval: 4h
+    matchers:
+      - name: severity
+        matchType: "=~"
+        value: warning|critical
+  receivers:
+    - name: ntfy
+      webhookConfigs:
+        - urlSecret:
+            name: alertmanager-ntfy
+            key: url
+          sendResolved: true

@@ -89,6 +89,10 @@ spec:
         resources: { requests: { cpu: 200m, memory: 1Gi }, limits: { memory: 2Gi } }
     alertmanager:
       alertmanagerSpec:
+        # An AlertmanagerConfig in `monitoring` (infrastructure/alerting) routes
+        # alerts from every namespace; elsewhere it would match only its own.
+        alertmanagerConfigMatcherStrategy:
+          type: OnNamespaceExceptForAlertmanagerNamespace
         # silences survive a restart (a Spot reclaim, for example)
         storage:
           volumeClaimTemplate:

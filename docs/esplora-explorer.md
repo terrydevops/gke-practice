@@ -128,8 +128,8 @@ What this cannot see: inflation inside blinded outputs, which is what the Septem
 confidential amounts carry no visible value. That is why the outflow side and the stall matter.
 Regtest also has no federation, no peg-ins and no reserve to reconcile.
 
-Alertmanager has no receiver yet, so these alerts reach no one. Until one is added they show only in
-Prometheus and Alertmanager.
+Alerts with severity `warning` or `critical` go to an ntfy topic (`gitops/infrastructure/alerting`),
+pushed to a phone by the ntfy app. The topic URL is kept in Secret Manager.
 
 ### Runbook: block production stalled
 
