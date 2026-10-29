@@ -103,9 +103,9 @@ Status as of 2026-10-25, with the nonprod cluster running. Status words:
 | ServiceMonitor and dashboard for Karpenter | a scrape annotation is not monitoring | open |
 | Alertmanager node alerts | | open |
 | Silencing managed control plane alerts | etcd and friends are not exposed | done (drill 3): their scrapes and rules are off; only `Watchdog` fires |
-| Fixed Grafana password | a random one caused a restart loop | not needed: the chart keeps its generated password on upgrade |
+| Fixed Grafana password | a random one caused a restart loop | done (drill 4): set in Secret Manager; Reloader restarts Grafana when it changes |
 | Prometheus storage and Slack route | | storage done (drill 3): 10Gi for 7 days, Alertmanager 1Gi; no receiver yet |
-| External Secrets for the Grafana password | the secret is in neither git nor state | open |
+| External Secrets for the Grafana password | the secret is in neither git nor state | done (drill 4): ESO with direct Workload Identity Federation, one KSA trusted, tenants get no ESO rights |
 
 ### 10. SLO and chaos
 
@@ -132,7 +132,7 @@ next one uses. Each has a check that says it is done.
 | 1 | **Close the fence.** (done 2026-10-25) Stop a tenant from removing the platform's default-deny policy and from handing its rights to someone else, while it can still manage its own allow rules; try to run a root pod in a tenant namespace | 4, 6, 7 | as the tenant's account: deleting `default-deny-ingress` and creating a RoleBinding are refused, whoami's own policy still reconciles; the root pod is refused by admission | nothing |
 | 2 | **Tear down and rebuild.** (done 2026-10-25) A destroy path (manual pipeline job), then the whole bootstrap again from the written steps | 1 | cluster gone with no leftover firewall rules, disks or addresses; rebuilt and all Kustomizations Ready from the README alone | nothing; saves money every night after |
 | 3 | **Monitoring.** (done 2026-10-26) kube-prometheus-stack through Flux, persistent storage, the control plane false alarms silenced, one alert of our own that fires and resolves | 9 | the alert is seen firing in Alertmanager after its cause is created, and gone after the cause is removed | two disks (10Gi + 1Gi), about USD 1.5 a month; one node was enough (memory 73%) |
-| 4 | **Secrets.** External Secrets with Secret Manager through Workload Identity, for the Grafana password | 9 | the password is in neither git nor Terraform state; rotating it in Secret Manager reaches the pod | cents |
+| 4 | **Secrets.** (done 2026-10-29) External Secrets with Secret Manager through Workload Identity, for the Grafana password | 9 | the password is in neither git nor Terraform state; rotating it in Secret Manager reaches the pod | cents |
 | 5 | **SLO.** Blackbox probe of whoami inside the cluster, Pyrra availability and latency objectives | 10 | scaling whoami to zero burns the budget and the fast-burn alert fires | nothing |
 | 6 | **Chaos.** Chaos Mesh with pod kill, network delay, CPU stress; experiments in git, started by hand | 10 | each experiment shows on the SLO dashboard and the service recovers without help | nothing |
 | 7 | **Elasticity.** Force a scale-out, drain a node against the PDB, add a second zone, then split into an on-demand pool for system pods and the Spot pool | 5, 6 | pending pods bring a node; the drain never takes whoami below its budget; replicas land in both zones | a node or two for the length of the drill |
