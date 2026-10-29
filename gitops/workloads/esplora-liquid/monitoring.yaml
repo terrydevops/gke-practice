@@ -41,59 +41,60 @@ spec:
           annotations:
             summary: "liquid-regtest: electrs main loop has not advanced for 5 minutes"
         - alert: ElectrsRocksDBWriteStopped
-          expr: max(rocksdb_is_write_stopped{namespace="esplora-liquid"}) > 0
+          expr: max by (namespace) (rocksdb_is_write_stopped{namespace="esplora-liquid"}) > 0
           for: 1m
           labels: { severity: critical }
           annotations:
             summary: "liquid-regtest: RocksDB has stopped writes in the electrs index"
         - alert: ElectrsIndexBehind
-          expr: max(chain_blocks{namespace="esplora-liquid"}) - max(tip_height{namespace="esplora-liquid"}) > 1
+          expr: max by (namespace) (chain_blocks{namespace="esplora-liquid"}) - max by (namespace) (tip_height{namespace="esplora-liquid"}) > 1
           for: 5m
           labels: { severity: warning }
           annotations:
             summary: "liquid-regtest: electrs is more than one block behind its node"
         # the node and the API in front of it
         - alert: ChainRPCDown
-          expr: max(chain_rpc_up{namespace="esplora-liquid"}) == 0
+          expr: max by (namespace) (chain_rpc_up{namespace="esplora-liquid"}) == 0
           for: 2m
           labels: { severity: critical }
           annotations:
             summary: "liquid-regtest: the node does not answer RPC"
         - alert: ChainAPIDown
-          expr: max(chain_api_up{namespace="esplora-liquid"}) == 0
+          expr: max by (namespace) (chain_api_up{namespace="esplora-liquid"}) == 0
           for: 2m
           labels: { severity: critical }
           annotations:
             summary: "liquid-regtest: the REST API does not answer"
         - alert: ChainAPIBehind
-          expr: max(chain_blocks{namespace="esplora-liquid"}) - max(chain_api_tip_height{namespace="esplora-liquid"}) > 1
+          expr: max by (namespace) (chain_blocks{namespace="esplora-liquid"}) - max by (namespace) (chain_api_tip_height{namespace="esplora-liquid"}) > 1
           for: 5m
           labels: { severity: warning }
           annotations:
             summary: "liquid-regtest: the API serves a tip more than one block old"
         - alert: ChainHeadersAhead
-          expr: max(chain_headers{namespace="esplora-liquid"}) - max(chain_blocks{namespace="esplora-liquid"}) > 2
+          expr: max by (namespace) (chain_headers{namespace="esplora-liquid"}) - max by (namespace) (chain_blocks{namespace="esplora-liquid"}) > 2
           for: 10m
           labels: { severity: warning }
           annotations:
             summary: "liquid-regtest: the node knows of blocks it has not validated"
         - alert: ChainwatchStale
-          expr: time() - max(chainwatch_last_run_timestamp_seconds{namespace="esplora-liquid"}) > 120 or absent(chainwatch_last_run_timestamp_seconds{namespace="esplora-liquid"})
+          expr: time() - max by (namespace) (chainwatch_last_run_timestamp_seconds{namespace="esplora-liquid"}) > 120 or absent(chainwatch_last_run_timestamp_seconds{namespace="esplora-liquid"})
           for: 5m
           labels: { severity: warning }
           annotations:
             summary: "liquid-regtest: chain metrics are stale; the alerts below cannot be trusted"
+        # max by (namespace) keeps the label that names the chain in the alert.
         # The signal Liquid's monitoring raised at 14:10 UTC on 2026-09-06, four
         # hours before the network was halted. Blocks come every minute here.
         - alert: BlockProductionStalled
-          expr: time() - max(chain_tip_timestamp_seconds{namespace="esplora-liquid"}) > 300
+          expr: time() - max by (namespace) (chain_tip_timestamp_seconds{namespace="esplora-liquid"}) > 300
           for: 1m
           labels: { severity: critical }
           annotations:
             summary: "liquid-regtest: no new block for more than 300 seconds"
             runbook: docs/esplora-explorer.md#runbook-block-production-stalled
         - alert: ChainMempoolNearFull
-          expr: max(chain_mempool_usage_bytes{namespace="esplora-liquid"} / chain_mempool_max_bytes{namespace="esplora-liquid"}) > 0.8
+          expr: max by (namespace) (chain_mempool_usage_bytes{namespace="esplora-liquid"} / chain_mempool_max_bytes{namespace="esplora-liquid"}) > 0.8
           for: 10m
           labels: { severity: warning }
           annotations:
@@ -101,7 +102,7 @@ spec:
         # Outflow: an explicit output above 100 coins in the tip block. Liquid's
         # blinded outputs carry no visible amount and cannot be checked this way.
         - alert: ChainLargeOutput
-          expr: max(chain_largest_output_tip_block_sats{namespace="esplora-liquid"}) > 10000000000
+          expr: max by (namespace) (chain_largest_output_tip_block_sats{namespace="esplora-liquid"}) > 10000000000
           labels: { severity: warning }
           annotations:
             summary: "liquid-regtest: an output above 100 coins in the latest block"

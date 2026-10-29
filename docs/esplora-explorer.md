@@ -152,6 +152,10 @@ pushed to a phone by the ntfy app. The topic URL is kept in Secret Manager.
 kubectl -n esplora-liquid exec esplora-0 -c esplora -- touch /data/miner-paused
 kubectl -n esplora-liquid exec esplora-0 -c esplora -- rm /data/miner-paused
 
+# Run on 2026-10-29: miner paused 06:10:20 UTC, BlockProductionStalled pending 06:14:55,
+# firing 06:16:05 (300 s threshold plus 1 minute). The alert had lost its namespace label
+# (max() drops labels); the rules now use max by (namespace).
+
 # outflow: a 150 BTC output on Bitcoin regtest, mined within 10 minutes. run.sh mines the
 # boot blocks to wallet "default"; load it first if the node does not have it loaded.
 kubectl -n esplora exec esplora-0 -c esplora -- sh -c 'cli loadwallet default; cli sendtoaddress $(cli getnewaddress) 150'
