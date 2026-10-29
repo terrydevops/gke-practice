@@ -9,3 +9,13 @@ misconfigurations:
       - modules/cluster/main.tf
     statement: IP endpoints disabled, DNS endpoint only
     expired_at: 2027-04-25
+  # The public Esplora image writes at start: run.sh generates its runit
+  # services under /etc/runit, and runit, nginx and tor keep state in /run and
+  # /var. A read-only root would need an emptyDir per path and an init
+  # container to seed /etc/runit. The namespace already runs it at `baseline`
+  # for the same reason (gitops/workloads/esplora/namespace.yaml).
+  - id: KSV-0014
+    paths:
+      - gitops/workloads/esplora/statefulset.yaml
+    statement: public Esplora image writes runit, nginx and tor state under /etc, /run and /var at start
+    expired_at: 2027-04-29
