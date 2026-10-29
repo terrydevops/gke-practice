@@ -1,0 +1,70 @@
+###
+# Flux marks each commit on GitHub with what it did: one status per
+# Kustomization, success or failure, next to the commit on main. The repository
+# is public, so anyone can see whether a change reached the cluster, and the
+# cluster itself stays closed.
+#
+# It signs in as a GitHub App that may only write commit statuses, installed on
+# this repository alone. Its credentials are in Google Secret Manager
+# (bootstrap/ci/secrets.tf), copied here by External Secrets, as for Grafana.
+# Everything is in flux-system: Flux refuses cross-namespace references.
+###
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: flux-github-secrets
+  namespace: flux-system
+---
+apiVersion: external-secrets.io/v1
+kind: SecretStore
+metadata:
+  name: gcp-secret-manager
+  namespace: flux-system
+spec:
+  provider:
+    gcpsm:
+      auth:
+        workloadIdentity:
+          serviceAccountRef:
+            name: flux-github-secrets
+---
+apiVersion: external-secrets.io/v1
+kind: ExternalSecret
+metadata:
+  name: flux-github
+  namespace: flux-system
+spec:
+  refreshInterval: 1h
+  secretStoreRef:
+    kind: SecretStore
+    name: gcp-secret-manager
+  target:
+    name: flux-github
+  # one JSON object; each of its keys becomes a key of the Secret
+  dataFrom:
+    - extract:
+        key: flux-github-commit-status
+---
+apiVersion: notification.toolkit.fluxcd.io/v1beta3
+kind: Provider
+metadata:
+  name: github-commit-status
+  namespace: flux-system
+spec:
+  type: github
+  address: https://github.com/terrydevops/gke-practice # same repository as the GitRepository
+  secretRef:
+    name: flux-github
+---
+apiVersion: notification.toolkit.fluxcd.io/v1beta3
+kind: Alert
+metadata:
+  name: github-commit-status
+  namespace: flux-system
+spec:
+  providerRef:
+    name: github-commit-status
+  eventSeverity: info # successes too, not only errors
+  eventSources:
+    - kind: Kustomization
+      name: "*"
