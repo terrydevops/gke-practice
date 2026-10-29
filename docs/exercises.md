@@ -114,8 +114,8 @@ Status as of 2026-10-25, with the nonprod cluster running. Status words:
 | Blackbox probe of whoami | | done (drill 5): in-cluster Probe every 15s; the tenant's NetworkPolicy admits the prober |
 | Pyrra availability and latency SLOs | multi-window burn-rate alerts | done (drill 5): one objective per environment, since Pyrra makes no dashboard rules for a grouped one; fast burn fired 144s after whoami-dev went to zero |
 | SLOs as a reusable Helm chart | | open |
-| Chaos Mesh, four experiments | pod kill, network delay, CPU stress, weekly schedule | open |
-| Experiments in git, synced by hand | fault injection must be deliberate | open |
+| Chaos Mesh, four experiments | pod kill, network delay, CPU stress, weekly schedule | done (drill 6) except the weekly schedule: faults start by hand only |
+| Experiments in git, synced by hand | fault injection must be deliberate | done (drill 6): `gitops/chaos/`, no Kustomization points there; only namespaces annotated `chaos-mesh.org/inject` can be reached |
 
 ### Planned on EKS, never done
 
@@ -134,7 +134,7 @@ next one uses. Each has a check that says it is done.
 | 3 | **Monitoring.** (done 2026-10-26) kube-prometheus-stack through Flux, persistent storage, the control plane false alarms silenced, one alert of our own that fires and resolves | 9 | the alert is seen firing in Alertmanager after its cause is created, and gone after the cause is removed | two disks (10Gi + 1Gi), about USD 1.5 a month; one node was enough (memory 73%) |
 | 4 | **Secrets.** (done 2026-10-29) External Secrets with Secret Manager through Workload Identity, for the Grafana password | 9 | the password is in neither git nor Terraform state; rotating it in Secret Manager reaches the pod | cents |
 | 5 | **SLO.** (done 2026-10-29) Blackbox probe of whoami inside the cluster, Pyrra availability and latency objectives | 10 | scaling whoami to zero burns the budget and the fast-burn alert fires | nothing |
-| 6 | **Chaos.** Chaos Mesh with pod kill, network delay, CPU stress; experiments in git, started by hand | 10 | each experiment shows on the SLO dashboard and the service recovers without help | nothing |
+| 6 | **Chaos.** (done 2026-10-29) Chaos Mesh with pod kill, network delay, CPU stress; experiments in git, started by hand | 10 | each experiment shows on the SLO dashboard and the service recovers without help | nothing |
 | 7 | **Elasticity.** Force a scale-out, drain a node against the PDB, add a second zone, then split into an on-demand pool for system pods and the Spot pool | 5, 6 | pending pods bring a node; the drain never takes whoami below its budget; replicas land in both zones | a node or two for the length of the drill |
 | 8 | **PostgreSQL.** A CloudNativePG cluster, WAL archive to GCS through Workload Identity, restore to a point in time | new | a row written before the "accident" is back after the restore, and the time it took is written down | disks and a bucket |
 | 9 | **Route from outside.** Static address and certificate in Terraform, Gateway and HTTPRoute in Flux | 8 | whoami answers from the internet; teardown (drill 2) still leaves nothing behind | a load balancer and an address (price not looked up) |
@@ -155,8 +155,6 @@ Why this order:
 
 Not checked yet, to confirm before the drill that needs it:
 
-- whether Chaos Mesh's network and stress experiments work on Container-Optimized OS with
-  Dataplane V2 (drill 6);
 - a certificate for drill 9 needs a domain name, and there is none yet.
 
 Left for later: splitting network and cluster into separate roots, a production environment, a second

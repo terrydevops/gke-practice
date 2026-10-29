@@ -4,12 +4,18 @@ Fault injection is started by hand, never by Flux: no Kustomization points here.
 in `infrastructure/controllers/chaos-mesh.yaml`; it only reaches namespaces annotated
 `chaos-mesh.org/inject: enabled`, which `tenants/base` sets on tenant namespaces.
 
-| File | Fault | Expected |
+| File | Fault | Seen on 2026-10-29 |
 |---|---|---|
-| `pod-kill-dev.yaml` | kill whoami-dev's only pod | a new pod by itself; a short dent in dev availability |
-| `pod-kill-staging.yaml` | kill one of whoami-staging's two pods | staging availability does not move |
-| `network-delay.yaml` | +300ms on everything whoami-dev sends, 5 minutes | dev latency SLO burns, availability does not |
-| `cpu-stress.yaml` | one CPU worker at full load in whoami-dev, 5 minutes | throttled at its 100m limit |
+| `pod-kill-dev.yaml` | kill whoami-dev's only pod | replacement Ready after 17s, one failed probe; dev availability dented, no alert |
+| `pod-kill-staging.yaml` | kill one of whoami-staging's two pods | replacement Ready after 10s, no failed probe; staging SLOs did not move |
+| `network-delay.yaml` | +300ms on everything whoami-dev sends, 5 minutes | probe time 20ms to about 600ms (the handshake and the answer are both delayed), through the Service; dev latency burn 1.0, availability and staging untouched; back to 20ms when it ran out |
+| `cpu-stress.yaml` | one CPU worker at full load in whoami-dev, 5 minutes | CPU pinned at the 100m limit, 95-100% of periods throttled; probe time 20ms to 30-55ms, so **no SLO moved**: whoami needs too little CPU to show it |
+
+The latency fast-burn alert did not fire for the 5-minute delay, as expected: it needs the 15-minute
+window above 14 x 5%, about ten minutes of slow answers.
+
+Works on this cluster (Container-Optimized OS, containerd, cgroup v2, Dataplane V2) with Chaos Mesh
+2.8.4: network delay through a ClusterIP Service, and CPU stress with the daemon privileged.
 
 ## Run one
 
