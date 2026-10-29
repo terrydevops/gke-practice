@@ -1,0 +1,22 @@
+###
+# What the explorer opens on top of the namespace's default-deny: :8080 to
+# cloudflared only. Everything public arrives that way, through the Worker.
+###
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-explorer-ingress
+spec:
+  podSelector:
+    matchLabels:
+      app: explorer
+  policyTypes:
+    - Ingress
+  ingress:
+    - from:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: cloudflared
+      ports:
+        - protocol: TCP
+          port: 8080

@@ -10,3 +10,4 @@ gha-creds-*.json
 # Real values stay local or in repository secrets; only the examples are committed.
 *.tfvars
 !*.tfvars.example
+cloudflare/explorer-worker/wrangler.toml

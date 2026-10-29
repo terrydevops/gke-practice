@@ -1,6 +1,6 @@
 # Esplora explorer: a public UI through Workers VPC
 
-Design for review, 2026-10-29. Nothing below is built yet.
+Built in git on 2026-10-29. The Cloudflare and Secret Manager steps are done by hand ("Bring it up").
 
 Goal: the Esplora UI for the regtest chain in `gitops/workloads/esplora`, reachable from the internet
 at a fixed `*.workers.dev` address, served by a Flux-managed tenant app. No domain, no load balancer,
@@ -36,12 +36,13 @@ and the explorer's nginx forwards that path to the backend.
 | Component | Where it lives | Owner | Notes |
 |---|---|---|---|
 | Egress TCP 7844 | `envs/nonprod/main.tf`, `egress_tcp_ports` | Terraform (CI apply) | cloudflared reaches Cloudflare on 7844; today only 443 is open |
-| `cloudflared` | `gitops/infrastructure/` (new namespace `cloudflared`) | Flux, platform | `tunnel run`, token from a Secret; non-root, `restricted` |
-| Tunnel token | Secret Manager → External Secrets → Secret `cloudflared-token` | platform | same pattern as the Grafana password; never in git |
+| `cloudflared` | `gitops/workloads/cloudflared`, its own Flux block `workloads-cloudflared` | Flux, platform | `tunnel run`, token from a Secret; non-root, `restricted`. Its own block, so a token not yet stored holds up nothing else |
+| Tunnel token | `bootstrap/ci/secrets.tf` → Secret Manager → External Secrets → Secret `cloudflared-token` | platform | same pattern as the Grafana password; the value is never in git or state |
 | `explorer` tenant | `gitops/apps/base/explorer`, `apps/nonprod/explorer-dev`, one block in `clusters/nonprod/tenants.yaml` | Flux, tenant | the usual fence: `restricted`, quota, default-deny ingress |
 | Static UI | copied at start from the pinned Esplora image | — | see "No image build" |
 | Network openings | `explorer-dev-app`: from `cloudflared` to :8080. `esplora`: from `explorer-dev-app` to :80 | tenant / platform | everything else stays denied |
-| Tunnel, VPC Service, Worker | Cloudflare account | by hand (dashboard and `wrangler`) | outside Flux; could move to Terraform later |
+| Tunnel, VPC Service | Cloudflare account | by hand (dashboard) | outside Flux; could move to Terraform later |
+| Worker | `cloudflare/explorer-worker` | by hand (`wrangler deploy`) | `wrangler.toml` is git-ignored: it holds the VPC Service id |
 
 ## No image build
 
@@ -62,18 +63,29 @@ So the explorer pod has:
 No registry, no CI job, no node pull permissions. The cost is pulling a ~430 MB image for a copy;
 it is already cached on the node that runs the backend.
 
-## Order of work
+## Bring it up
 
-1. Terraform: add 7844 to `egress_tcp_ports`. Plan in CI, apply by hand (Run workflow on `main`).
-2. Cloudflare dashboard (by hand): create a named tunnel, keep its token. No public hostname.
-3. Secret Manager (by hand): store the token. Add the ExternalSecret next to the Grafana one.
-4. Git: `cloudflared` in `infrastructure/`; the `explorer` tenant; the two NetworkPolicy openings.
-   Push; Flux applies. Check `cloudflared` shows the tunnel healthy in the dashboard.
-5. Cloudflare (by hand): a VPC Service on that tunnel, host
-   `explorer.explorer-dev-app.svc.cluster.local`, port 8080.
-6. Worker (by hand, `wrangler deploy`): a `vpc_services` binding to that service, `fetch` forwards
-   the request. Enable its `workers.dev` route.
-7. Check: `/regtest/` loads, a block page loads, `/regtest/api/blocks/tip/height` answers.
+Git first, then the by-hand steps; Flux retries `workloads-cloudflared` until the token exists.
+
+1. **Push** this branch and merge it. Flux applies the explorer tenant and `cloudflared` (which waits
+   for its token).
+2. **Terraform, network** (CI, Run workflow on `main`, `action=apply`): port 7844.
+3. **Terraform, bootstrap/ci** (by hand, as for the other secrets): the secret and its reader.
+4. **Cloudflare dashboard**, Zero Trust → Networks → Tunnels: create a tunnel (cloudflared),
+   copy its token. Add no public hostname.
+5. **Secret Manager**: `printf %s '<token>' | gcloud secrets versions add cloudflared-tunnel-token --data-file=-`
+   Within the hour (or `kubectl -n cloudflared annotate externalsecret cloudflared-token force-sync=$(date +%s)`)
+   the pod starts; the dashboard shows the tunnel healthy.
+6. **Cloudflare dashboard**, Workers VPC: a VPC Service on that tunnel, hostname
+   `explorer.explorer-dev-app.svc.cluster.local`, HTTP port 8080. Copy its id.
+7. **Worker**: `cd cloudflare/explorer-worker && cp wrangler.toml.example wrangler.toml`, put in the
+   id, `npx wrangler deploy`. It answers at `https://explorer.<account subdomain>.workers.dev/`.
+8. **Check**: `/regtest/` loads, a block page loads, `/regtest/api/blocks/tip/height` answers,
+   `curl -X POST .../regtest/api/tx` gets 403.
+
+Checked before pushing: the explorer's nginx config and the copy step against the image locally
+(redirect, deep links, API proxy, POST refused, copy as UID 65532); a server-side dry run of the
+explorer and of `cloudflared` in a `restricted` namespace, with no Pod Security warning.
 
 ## Not confirmed yet
 

@@ -47,6 +47,10 @@ module "network" {
 
   nat_ip_count = 1 # nobody allow-lists this egress; prod keeps the default two
 
+  # 7844: cloudflared to Cloudflare, for the public explorer
+  # (docs/esplora-explorer.md). Drop it with the tunnel.
+  egress_tcp_ports = ["443", "7844"]
+
   depends_on = [google_project_service.this]
 }
 

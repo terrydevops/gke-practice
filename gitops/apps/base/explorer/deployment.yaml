@@ -1,0 +1,94 @@
+###
+# The Esplora UI without building an image. The pinned Esplora image already
+# holds the built UI for every flavor; the init container copies the plain
+# regtest build (not the Blockstream-branded one) into an emptyDir, and an
+# unprivileged nginx serves it. Both run as non-root, so the tenant's
+# "restricted" namespace admits them.
+###
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: explorer
+  labels:
+    app: explorer
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: explorer
+  template:
+    metadata:
+      labels:
+        app: explorer
+    spec:
+      automountServiceAccountToken: false
+      securityContext:
+        runAsNonRoot: true
+        seccompProfile:
+          type: RuntimeDefault
+      initContainers:
+        - name: copy-ui
+          # Same image and digest as gitops/workloads/esplora/statefulset.yaml.
+          image: docker.io/blockstream/esplora:v3.0.1@sha256:c9fe515a855631b9d99d6fc72eca410fa26e6fbd23ed4a3edf7db35b1947db80
+          command: ["sh", "-c", "mkdir -p /site/regtest && cp -r /srv/explorer/static/bitcoin-regtest/. /site/regtest/"]
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            runAsUser: 65532 # the files are world-readable
+            capabilities:
+              drop: ["ALL"]
+          resources:
+            requests:
+              cpu: 10m
+              memory: 16Mi
+            limits:
+              memory: 64Mi
+          volumeMounts:
+            - name: site
+              mountPath: /site
+      containers:
+        - name: nginx
+          # Fully-qualified and pinned by digest; stable line, from mid-September.
+          image: docker.io/nginxinc/nginx-unprivileged:1.30.4-alpine@sha256:adf5042a17f4ecdd200c595fa9ffd1be37efb18f89a830bd1a00e4ab4d59d42c
+          ports:
+            - containerPort: 8080
+          readinessProbe:
+            httpGet: { path: /regtest/, port: 8080 }
+            periodSeconds: 10
+            timeoutSeconds: 2
+            failureThreshold: 3
+          livenessProbe:
+            httpGet: { path: /regtest/, port: 8080 }
+            initialDelaySeconds: 5
+            periodSeconds: 20
+            timeoutSeconds: 2
+            failureThreshold: 3
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            runAsUser: 101 # the image's nginx user
+            capabilities:
+              drop: ["ALL"]
+          resources:
+            requests:
+              cpu: 20m
+              memory: 32Mi
+            limits:
+              memory: 128Mi
+          volumeMounts:
+            - name: site
+              mountPath: /site
+              readOnly: true
+            - name: conf
+              mountPath: /etc/nginx/conf.d
+              readOnly: true
+            - name: tmp # pid file and proxy buffers
+              mountPath: /tmp
+      volumes:
+        - name: site
+          emptyDir: {}
+        - name: tmp
+          emptyDir: {}
+        - name: conf
+          configMap:
+            name: explorer-nginx

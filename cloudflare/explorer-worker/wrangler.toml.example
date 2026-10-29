@@ -1,0 +1,9 @@
+# Copy to wrangler.toml (git-ignored) and fill in the VPC Service id.
+name = "explorer"
+main = "src/index.js"
+compatibility_date = "2026-10-01"
+workers_dev = true
+
+[[vpc_services]]
+binding = "EXPLORER"
+service_id = "<VPC Service id>"

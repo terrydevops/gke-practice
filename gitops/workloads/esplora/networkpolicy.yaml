@@ -49,3 +49,24 @@ spec:
       ports:
         - protocol: TCP
           port: 4224
+---
+# The public explorer's nginx (gitops/apps/base/explorer) reads the API on :80.
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-explorer-api
+  namespace: esplora
+spec:
+  podSelector:
+    matchLabels:
+      app: esplora
+  policyTypes:
+    - Ingress
+  ingress:
+    - from:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: explorer-dev-app
+      ports:
+        - protocol: TCP
+          port: 80

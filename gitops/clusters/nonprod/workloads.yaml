@@ -24,3 +24,24 @@ spec:
   serviceAccountName: kustomize-controller
   prune: true
   wait: true # healthy means the StatefulSet is ready
+---
+# The tunnel to Cloudflare for the public explorer. Its own block so a missing
+# token (the secret has no version yet) only holds this one up.
+apiVersion: kustomize.toolkit.fluxcd.io/v1
+kind: Kustomization
+metadata:
+  name: workloads-cloudflared
+  namespace: flux-system
+spec:
+  dependsOn:
+    - name: infra-configs # ExternalSecret CRD
+  interval: 1h
+  retryInterval: 2m
+  timeout: 5m
+  sourceRef:
+    kind: GitRepository
+    name: flux-system
+  path: ./gitops/workloads/cloudflared
+  serviceAccountName: kustomize-controller
+  prune: true
+  wait: true

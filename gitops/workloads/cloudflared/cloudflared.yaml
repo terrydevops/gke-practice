@@ -1,0 +1,123 @@
+###
+# cloudflared for the public explorer (docs/esplora-explorer.md): it dials out
+# to Cloudflare on TCP 7844 (envs/nonprod/main.tf) and carries what the Worker
+# sends through its Workers VPC Service. The tunnel has no public hostname;
+# the Worker on workers.dev is the only way in.
+#
+# The tunnel token comes from Secret Manager (bootstrap/ci/secrets.tf), read by
+# cloudflared-secrets only, as for Grafana. Nothing can reach this namespace.
+###
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: cloudflared
+  labels:
+    pod-security.kubernetes.io/enforce: restricted
+    pod-security.kubernetes.io/warn: restricted
+    pod-security.kubernetes.io/audit: restricted
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: default-deny-ingress
+  namespace: cloudflared
+spec:
+  podSelector: {}
+  policyTypes:
+    - Ingress
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: cloudflared-secrets
+  namespace: cloudflared
+---
+apiVersion: external-secrets.io/v1
+kind: SecretStore
+metadata:
+  name: gcp-secret-manager
+  namespace: cloudflared
+spec:
+  provider:
+    gcpsm:
+      auth:
+        workloadIdentity:
+          serviceAccountRef:
+            name: cloudflared-secrets
+---
+apiVersion: external-secrets.io/v1
+kind: ExternalSecret
+metadata:
+  name: cloudflared-token
+  namespace: cloudflared
+spec:
+  refreshInterval: 1h
+  secretStoreRef:
+    kind: SecretStore
+    name: gcp-secret-manager
+  target:
+    name: cloudflared-token
+  data:
+    - secretKey: token
+      remoteRef:
+        key: cloudflared-tunnel-token
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: cloudflared
+  namespace: cloudflared
+  labels:
+    app: cloudflared
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: cloudflared
+  template:
+    metadata:
+      labels:
+        app: cloudflared
+    spec:
+      automountServiceAccountToken: false
+      securityContext:
+        runAsNonRoot: true
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+        - name: cloudflared
+          # Fully-qualified and pinned by digest; a release from early October.
+          image: docker.io/cloudflare/cloudflared:2026.10.0@sha256:9b49eed8f62806d5d45ddf59ecefb5710429598ea6d3fcccd2af938f621b2b07
+          args:
+            - tunnel
+            - --no-autoupdate
+            - --protocol
+            - http2 # TCP; the VPC firewall opens no UDP for QUIC
+            - --metrics
+            - 0.0.0.0:2000
+            - run
+          env:
+            - name: TUNNEL_TOKEN
+              valueFrom:
+                secretKeyRef:
+                  name: cloudflared-token
+                  key: token
+          ports:
+            - name: metrics
+              containerPort: 2000
+          readinessProbe:
+            httpGet: { path: /ready, port: 2000 }
+            periodSeconds: 10
+            failureThreshold: 3
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            runAsUser: 65532
+            capabilities:
+              drop: ["ALL"]
+          resources:
+            requests:
+              cpu: 10m
+              memory: 32Mi
+            limits:
+              memory: 128Mi

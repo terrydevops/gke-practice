@@ -46,3 +46,20 @@ resource "google_secret_manager_secret_iam_member" "flux_github" {
   role      = "roles/secretmanager.secretAccessor"
   member    = "${local.ksa_principal}/ns/flux-system/sa/flux-github-secrets"
 }
+
+# Token of the named Cloudflare Tunnel behind the public explorer
+# (docs/esplora-explorer.md). The tunnel itself is created in the Cloudflare
+# dashboard; only its token is kept here.
+resource "google_secret_manager_secret" "cloudflared_token" {
+  secret_id = "cloudflared-tunnel-token"
+  replication {
+    auto {}
+  }
+  depends_on = [google_project_service.this]
+}
+
+resource "google_secret_manager_secret_iam_member" "cloudflared_token" {
+  secret_id = google_secret_manager_secret.cloudflared_token.secret_id
+  role      = "roles/secretmanager.secretAccessor"
+  member    = "${local.ksa_principal}/ns/cloudflared/sa/cloudflared-secrets"
+}
