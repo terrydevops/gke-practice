@@ -1,0 +1,42 @@
+###
+# Prometheus (monitoring) picks up monitors and rules from every namespace
+# (serviceMonitorSelectorNilUsesHelmValues: false in kube-prometheus-stack.yaml).
+# Metric names: blockstream/prep/electrs-metrics.md, checked against v3.0.1.
+###
+apiVersion: monitoring.coreos.com/v1
+kind: ServiceMonitor
+metadata:
+  name: electrs
+  namespace: esplora
+spec:
+  selector:
+    matchLabels:
+      app: esplora
+  endpoints:
+    - port: metrics
+      interval: 30s
+---
+apiVersion: monitoring.coreos.com/v1
+kind: PrometheusRule
+metadata:
+  name: esplora
+  namespace: esplora
+spec:
+  groups:
+    - name: esplora
+      rules:
+        # The main loop runs every 5 s, so a flat count means electrs is stuck.
+        - alert: ElectrsMainLoopStalled
+          expr: changes(electrs_main_loop_count{namespace="esplora"}[5m]) == 0
+          for: 5m
+          labels:
+            severity: warning
+          annotations:
+            summary: "electrs main loop has not advanced for 5 minutes"
+        - alert: ElectrsRocksDBWriteStopped
+          expr: max(rocksdb_is_write_stopped{namespace="esplora"}) > 0
+          for: 1m
+          labels:
+            severity: critical
+          annotations:
+            summary: "RocksDB has stopped writes in the electrs index"

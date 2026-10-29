@@ -1,0 +1,82 @@
+###
+# The public Esplora image as it is: one container, runit supervising
+# bitcoind, electrs, nginx and the rest (blockstream-practice/README.md).
+# Regtest only: the chain starts empty, so there is nothing to sync, and
+# run.sh mines 100 blocks on every start.
+#
+# A StatefulSet for the disk: /data holds the chain and the electrs index and
+# must follow the pod when a Spot node is reclaimed.
+###
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: esplora
+  namespace: esplora
+  labels:
+    app: esplora
+spec:
+  serviceName: esplora
+  replicas: 1
+  selector:
+    matchLabels:
+      app: esplora
+  # the disk goes with the StatefulSet, as for Prometheus in monitoring
+  persistentVolumeClaimRetentionPolicy:
+    whenDeleted: Delete
+    whenScaled: Retain
+  template:
+    metadata:
+      labels:
+        app: esplora
+    spec:
+      # runit_boot.sh stops socat, then electrs, then bitcoind with a longer
+      # wait so it flushes cleanly. The default 30 s cuts that short.
+      terminationGracePeriodSeconds: 120
+      securityContext:
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+        - name: esplora
+          # Fully-qualified and pinned by digest (the multi-arch index of v3.0.1).
+          image: docker.io/blockstream/esplora:v3.0.1@sha256:c9fe515a855631b9d99d6fc72eca410fa26e6fbd23ed4a3edf7db35b1947db80
+          command: ["bash", "-c", "/srv/explorer/run.sh bitcoin-regtest explorer"]
+          ports:
+            - name: http
+              containerPort: 80
+            - name: metrics
+              containerPort: 4224
+            - name: electrum
+              containerPort: 50001
+          # Ready once nginx answers and electrs serves the tip through it.
+          # A startup probe covers the first boot: image pull is done, but
+          # bitcoind, mining and the first index still take a while.
+          startupProbe:
+            httpGet: { path: /regtest/api/blocks/tip/height, port: 80 }
+            periodSeconds: 5
+            failureThreshold: 60 # 5 minutes
+          readinessProbe:
+            httpGet: { path: /regtest/api/blocks/tip/height, port: 80 }
+            periodSeconds: 10
+            timeoutSeconds: 3
+            failureThreshold: 3
+          # No liveness probe: runit already restarts a crashed process inside
+          # the container, and a pod restart costs a full bitcoind restart.
+          resources:
+            # Measured locally on regtest: electrs alone about 124 MiB RSS.
+            requests:
+              cpu: 250m
+              memory: 512Mi
+            limits:
+              memory: 1Gi
+          volumeMounts:
+            - name: data
+              mountPath: /data
+  volumeClaimTemplates:
+    - metadata:
+        name: data
+      spec:
+        storageClassName: standard-rwo # pd-balanced, zonal
+        accessModes: [ReadWriteOnce]
+        resources:
+          requests:
+            storage: 10Gi
