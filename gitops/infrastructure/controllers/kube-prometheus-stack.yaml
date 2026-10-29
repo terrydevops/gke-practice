@@ -81,10 +81,11 @@ spec:
         # the disk goes with the release; the default would leave it billing
         # after a teardown (gitops/README.md, "Tear down and rebuild")
         persistentVolumeClaimRetentionPolicy: { whenDeleted: Delete }
-        # pick up rules and monitors from every namespace, not only this release's
+        # pick up rules, monitors and probes from every namespace, not only this release's
         ruleSelectorNilUsesHelmValues: false
         serviceMonitorSelectorNilUsesHelmValues: false
         podMonitorSelectorNilUsesHelmValues: false
+        probeSelectorNilUsesHelmValues: false
         resources: { requests: { cpu: 200m, memory: 1Gi }, limits: { memory: 2Gi } }
     alertmanager:
       alertmanagerSpec:

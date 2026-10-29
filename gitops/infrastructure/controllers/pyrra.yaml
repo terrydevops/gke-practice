@@ -1,0 +1,81 @@
+###
+# Pyrra: turns ServiceLevelObjective objects into Prometheus recording rules
+# and multi-window burn-rate alerts, and serves a UI on top of them. The
+# objectives themselves are in infrastructure/configs/slo-whoami.yaml.
+#
+# The CRD is its own chart, installed first. It adds no aggregation labels, so
+# tenants (who hold `admin` in their namespace) get no rights on objectives.
+# The operator itself needs a ClusterRole: it writes PrometheusRules next to
+# each objective, wherever that is.
+#
+# No UI is exposed; see "Monitoring" in gitops/README.md for port-forward.
+###
+apiVersion: source.toolkit.fluxcd.io/v1
+kind: HelmRepository
+metadata:
+  name: pyrra
+  namespace: flux-system
+spec:
+  interval: 12h
+  url: https://pyrra-dev.github.io/helm-charts
+---
+apiVersion: helm.toolkit.fluxcd.io/v2
+kind: HelmRelease
+metadata:
+  name: pyrra-crds
+  namespace: flux-system
+spec:
+  interval: 1h
+  serviceAccountName: helm-controller
+  targetNamespace: monitoring
+  releaseName: pyrra-crds
+  chart:
+    spec:
+      chart: pyrra-crds
+      version: "0.1.1" # pinned; same app version as the pyrra chart below
+      sourceRef:
+        kind: HelmRepository
+        name: pyrra
+  install:
+    remediation:
+      retries: 3
+  upgrade:
+    remediation:
+      retries: 3
+      remediateLastFailure: true
+---
+apiVersion: helm.toolkit.fluxcd.io/v2
+kind: HelmRelease
+metadata:
+  name: pyrra
+  namespace: flux-system
+spec:
+  interval: 1h
+  serviceAccountName: helm-controller
+  targetNamespace: monitoring
+  releaseName: pyrra
+  dependsOn:
+    - name: pyrra-crds
+  chart:
+    spec:
+      chart: pyrra
+      version: "1.14.0" # pinned; an upgrade is a reviewed change in git
+      sourceRef:
+        kind: HelmRepository
+        name: pyrra
+  install:
+    remediation:
+      retries: 3
+  upgrade:
+    remediation:
+      retries: 3
+      remediateLastFailure: true
+  values:
+    prometheusUrl: http://prometheus-operated.monitoring.svc.cluster.local:9090
+    # its own admission webhook would need a certificate; the CRD schema is enough
+    validatingWebhookConfiguration: { enabled: false }
+    # the generic rules feed the Grafana dashboards; the sidecar picks those up
+    # from this namespace (label grafana_dashboard=1)
+    genericRules: { enabled: true }
+    dashboards: { enabled: true }
+    serviceMonitor: { enabled: true }

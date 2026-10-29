@@ -18,9 +18,9 @@ gitops/
 │       └── tenants.yaml        # one block per tenant (<app>-<env>)
 ├── infrastructure/             # PLATFORM-OWNED, applied as cluster-admin
 │   ├── controllers/            # operators + CRDs as HelmReleases (CloudNativePG, kube-prometheus-stack,
-│   │                           # External Secrets, Reloader)
+│   │                           # External Secrets, Reloader, blackbox exporter, Pyrra)
 │   └── configs/                # needs those CRDs or cluster-wide rights (RBAC for humans, alerts,
-│                               # Grafana and its secret)
+│                               # SLOs, Grafana and its secret)
 ├── tenants/
 │   └── base/                   # PLATFORM-OWNED: the fence around one tenant, stamped per tenant
 └── apps/                       # TENANT-OWNED, applied as the tenant's own account
@@ -153,6 +153,7 @@ comes from a Secret that External Secrets creates there.
   kubectl -n monitoring port-forward svc/grafana 3000:80
   kubectl -n monitoring port-forward svc/kube-prometheus-stack-prometheus 9090
   kubectl -n monitoring port-forward svc/kube-prometheus-stack-alertmanager 9093
+  kubectl -n monitoring port-forward svc/pyrra 9099
   ```
 
 - **Grafana login:** user `admin`. The password is in Google Secret Manager (`grafana-admin-password`),
@@ -176,6 +177,11 @@ comes from a Secret that External Secrets creates there.
   (Dataplane V2 has none). Their rules are off too, so `Watchdog` is the only alert that fires on a
   healthy cluster.
 - **Our alerts:** `infrastructure/configs/alerts.yaml`. No receiver yet; look in Alertmanager.
+- **SLOs:** `infrastructure/configs/slo-whoami.yaml`. The blackbox exporter probes each whoami Service
+  from inside the cluster every 15s; Pyrra turns the results into availability (99%) and latency
+  (95% under 250ms) objectives over 7 days, one budget per environment, with burn-rate alerts
+  (`ErrorBudgetBurn`). See them in the Pyrra UI or the "Pyrra" dashboards in Grafana. A tenant is
+  probed only if its NetworkPolicy lets the prober in (`apps/base/whoami/networkpolicy.yaml`).
 - **Storage:** Prometheus 10Gi (7 days), Alertmanager 1Gi. Both disks are deleted with the release.
 
 ## Tear down and rebuild

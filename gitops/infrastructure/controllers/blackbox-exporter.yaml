@@ -1,0 +1,35 @@
+###
+# Blackbox exporter: probes whoami from inside the cluster, so the SLOs in
+# infrastructure/configs/slo-whoami.yaml need no public route. Its default
+# `http_2xx` module is all they use.
+#
+# The tenant lets it in: whoami's own NetworkPolicy admits this pod by label,
+# on whoami's port only.
+###
+apiVersion: helm.toolkit.fluxcd.io/v2
+kind: HelmRelease
+metadata:
+  name: blackbox-exporter
+  namespace: flux-system
+spec:
+  interval: 1h
+  serviceAccountName: helm-controller
+  targetNamespace: monitoring # created in kube-prometheus-stack.yaml
+  releaseName: blackbox-exporter
+  chart:
+    spec:
+      chart: prometheus-blackbox-exporter
+      version: "11.20.0" # pinned; an upgrade is a reviewed change in git
+      sourceRef:
+        kind: HelmRepository
+        name: prometheus-community # in kube-prometheus-stack.yaml
+  install:
+    remediation:
+      retries: 3
+  upgrade:
+    remediation:
+      retries: 3
+      remediateLastFailure: true
+  values:
+    fullnameOverride: blackbox-exporter
+    resources: { requests: { cpu: 10m, memory: 32Mi }, limits: { memory: 64Mi } }
