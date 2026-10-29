@@ -1,0 +1,68 @@
+###
+# Grafana, as its own release. It used to be part of kube-prometheus-stack, but
+# its admin password now comes from Secret Manager (grafana-secret.yaml), and
+# that Secret can only exist once the ESO CRDs are installed. Grafana therefore
+# lives in this layer, after infra-controllers, instead of in the stack.
+#
+# kube-prometheus-stack still renders the datasource and dashboard ConfigMaps;
+# the sidecars load them from this namespace only (a Role, not a ClusterRole).
+# Same chart version as the one the stack bundles.
+###
+apiVersion: source.toolkit.fluxcd.io/v1
+kind: OCIRepository
+metadata:
+  name: grafana
+  namespace: flux-system
+spec:
+  interval: 12h
+  url: oci://ghcr.io/grafana-community/helm-charts/grafana
+  ref:
+    tag: "13.5.0" # pinned; an upgrade is a reviewed change in git
+  layerSelector:
+    mediaType: application/vnd.cncf.helm.chart.content.v1.tar+gzip
+    operation: copy
+---
+apiVersion: helm.toolkit.fluxcd.io/v2
+kind: HelmRelease
+metadata:
+  name: grafana
+  namespace: flux-system
+spec:
+  interval: 1h
+  serviceAccountName: helm-controller
+  targetNamespace: monitoring
+  releaseName: grafana
+  chartRef:
+    kind: OCIRepository
+    name: grafana
+  install:
+    remediation:
+      retries: 3
+  upgrade:
+    remediation:
+      retries: 3
+      remediateLastFailure: true
+  values:
+    admin:
+      existingSecret: grafana-admin
+      userKey: admin-user
+      passwordKey: admin-password
+    annotations:
+      secret.reloader.stakater.com/reload: grafana-admin # restart on rotation
+    rbac:
+      namespaced: true
+    sidecar:
+      dashboards:
+        enabled: true
+        label: grafana_dashboard
+        labelValue: "1"
+        provider:
+          allowUiUpdates: false
+      datasources:
+        enabled: true
+        label: grafana_datasource
+        labelValue: "1"
+    serviceMonitor:
+      enabled: true
+    persistence: { enabled: false } # dashboards come from ConfigMaps
+    resources: { requests: { cpu: 50m, memory: 256Mi }, limits: { memory: 512Mi } }

@@ -4,3 +4,5 @@ resources:
   - rbac.yaml
   - tenant-guard.yaml
   - alerts.yaml
+  - grafana-secret.yaml
+  - grafana.yaml

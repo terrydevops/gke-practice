@@ -28,6 +28,7 @@ resource "google_project_service" "this" {
     "iamcredentials.googleapis.com",
     "sts.googleapis.com",
     "cloudresourcemanager.googleapis.com",
+    "secretmanager.googleapis.com", # secrets.tf
   ])
 
   service            = each.value

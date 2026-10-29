@@ -42,7 +42,7 @@ spec:
     - name: infra-controllers
   interval: 1h
   retryInterval: 2m
-  timeout: 5m
+  timeout: 10m # a first Grafana install pulls its image
   sourceRef:
     kind: GitRepository
     name: flux-system

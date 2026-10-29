@@ -3,3 +3,5 @@ kind: Kustomization
 resources:
   - cloudnative-pg.yaml
   - kube-prometheus-stack.yaml
+  - external-secrets.yaml
+  - reloader.yaml
