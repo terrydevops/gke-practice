@@ -9,6 +9,9 @@ metadata:
   name: electrs
   namespace: esplora
 spec:
+  # electrs answers /metrics with no Content-Type, which Prometheus 3 refuses
+  # ("non-compliant scrape target"). Seen on the cluster, 2026-10-29.
+  fallbackScrapeProtocol: PrometheusText0.0.4
   selector:
     matchLabels:
       app: esplora
