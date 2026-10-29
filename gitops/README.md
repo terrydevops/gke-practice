@@ -21,7 +21,7 @@ gitops/
 │   ├── controllers/            # operators + CRDs as HelmReleases (CloudNativePG, kube-prometheus-stack,
 │   │                           # External Secrets, Reloader, blackbox exporter, Pyrra)
 │   └── configs/                # needs those CRDs or cluster-wide rights (RBAC for humans, alerts,
-│                               # SLOs, Grafana and its secret)
+│                               # SLOs, Grafana and its secret, Flux commit status)
 ├── tenants/
 │   └── base/                   # PLATFORM-OWNED: the fence around one tenant, stamped per tenant
 ├── apps/                       # TENANT-OWNED, applied as the tenant's own account
@@ -210,6 +210,35 @@ comes from a Secret that External Secrets creates there.
   (`ErrorBudgetBurn`). See them in the Pyrra UI or the "Pyrra" dashboards in Grafana. A tenant is
   probed only if its NetworkPolicy lets the prober in (`apps/base/whoami/networkpolicy.yaml`).
 - **Storage:** Prometheus 10Gi (7 days), Alertmanager 1Gi. Both disks are deleted with the release.
+
+## Commit status
+
+Flux marks every commit on `main` on GitHub with one status per Kustomization (success or failure),
+so the commit list shows whether a change reached the cluster. PRs are rebased onto `main`, so the
+status is on the `main` commit, not on the PR. Set up in `infrastructure/configs/flux-commit-status.yaml`.
+
+Flux signs in as a GitHub App. Its credentials are in Google Secret Manager
+(`flux-github-commit-status`, created by `bootstrap/ci/secrets.tf`), in neither git nor state; External
+Secrets copies them into the `flux-system/flux-github` Secret.
+
+One-time setup:
+
+1. GitHub, Settings, Developer settings, GitHub Apps, New GitHub App. No webhook. Repository
+   permissions: **Commit statuses: Read and write**, nothing else. Only on this account.
+2. Generate a private key (a `.pem` download), then Install App on this repository only. Note the
+   App ID (the app's page) and the installation ID (the number at the end of the installation's URL).
+3. Store all three as one JSON object, piped so nothing is shown or written, then delete the `.pem`:
+
+   ```bash
+   python3 -c 'import json, sys; print(json.dumps({"githubAppID": sys.argv[1],
+     "githubAppInstallationID": sys.argv[2], "githubAppPrivateKey": open(sys.argv[3]).read()}), end="")' \
+     <app-id> <installation-id> <key.pem> |
+     gcloud --configuration=<config> secrets versions add flux-github-commit-status --data-file=-
+   ```
+
+To rotate the key, generate a new one on the app, add a version the same way, delete the old key on
+GitHub, and force a copy:
+`kubectl -n flux-system annotate externalsecret flux-github force-sync="$(date +%s)" --overwrite`.
 
 ## Tear down and rebuild
 

@@ -4,6 +4,7 @@ resources:
   - rbac.yaml
   - tenant-guard.yaml
   - alerts.yaml
+  - flux-commit-status.yaml
   - slo-whoami.yaml
   - grafana-secret.yaml
   - grafana.yaml
