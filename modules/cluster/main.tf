@@ -95,6 +95,20 @@ resource "google_container_cluster" "this" {
     dns_cache_config {
       enabled = true
     }
+    # On by default, and a DaemonSet on every node; every volume here is a
+    # persistent disk.
+    gcp_filestore_csi_driver_config {
+      enabled = false
+    }
+  }
+
+  # System metrics only. kube-state metrics come from kube-prometheus-stack;
+  # GKE's own package (namespace gke-managed-cim) would be a second copy.
+  monitoring_config {
+    enable_components = ["SYSTEM_COMPONENTS"]
+    managed_prometheus {
+      enabled = true
+    }
   }
 
   # Gateway API CRDs and controller, for the internal / regional gateways that
