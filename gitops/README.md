@@ -92,10 +92,14 @@ but in their own namespaces:
 | Applied as | `kustomize-controller` / `helm-controller` | `kustomize-controller` | the tenant's own account |
 | Pod Security | per component (monitoring is `privileged`) | `baseline`; warn and audit at `restricted` | `restricted` |
 | Ingress | per component | default-deny, then Prometheus to the metrics port only | default-deny, then the tenant's own rules |
+| Egress | open | denied: regtest needs no network beyond the pod | open |
 | `tenant` label | no | no | yes, so the admission policies apply |
 
 `baseline` because the public Esplora image runs runit as root and nginx on :80. It still refuses
-privileged pods, host namespaces and hostPath. Moving to `restricted` means non-root images.
+privileged pods, host namespaces and hostPath, so a root container cannot see the node. What root
+inside still costs is a container escape: there is no user namespace, so root inside is UID 0 on the
+node. Moving to `restricted` means non-root images. Until then: no service account token, no
+privilege escalation, no egress.
 
 Not done yet: a tainted node pool of their own (a Terraform change), and anything reachable from outside.
 
