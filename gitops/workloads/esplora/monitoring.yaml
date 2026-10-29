@@ -33,7 +33,9 @@ spec:
       rules:
         # electrs itself
         - alert: ElectrsMainLoopStalled
-          expr: changes(electrs_main_loop_count{namespace="esplora"}[5m]) == 0
+          # A series needs a full window of samples first: just after a pod
+          # restart the old pod's last sample alone gives changes() == 0 (seen).
+          expr: changes(electrs_main_loop_count{namespace="esplora"}[5m]) == 0 and count_over_time(electrs_main_loop_count{namespace="esplora"}[5m]) >= 9
           for: 5m
           labels: { severity: warning }
           annotations:
