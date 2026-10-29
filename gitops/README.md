@@ -19,7 +19,8 @@ gitops/
 │       └── workloads.yaml      # chain workloads, one block per workload
 ├── infrastructure/             # PLATFORM-OWNED, applied as cluster-admin
 │   ├── controllers/            # operators + CRDs as HelmReleases (CloudNativePG, kube-prometheus-stack,
-│   │                           # External Secrets, Reloader, blackbox exporter, Pyrra, Chaos Mesh)
+│   │                           # External Secrets, Reloader, blackbox exporter, Pyrra, Chaos Mesh,
+│   │                           # Headlamp)
 │   └── configs/                # needs those CRDs or cluster-wide rights (RBAC for humans, alerts,
 │                               # SLOs, Grafana and its secret, Flux commit status)
 ├── tenants/
@@ -151,6 +152,7 @@ kubectl create namespace flux-system
 kubectl -n flux-system create configmap cluster-vars \
   --from-literal=cluster_admin="<google account e-mail>" \
   --from-literal=proxy_only_cidr="$(terraform -chdir=envs/nonprod output -raw proxy_only_cidr)"
+#    optional: cluster_viewer_1..3, read-only people (see "UI"); an unset slot binds nobody
 
 # 3. Flux installs itself, fills in the two gotk-*.yaml files under
 #    gitops/clusters/nonprod/flux-system/ and commits them. The kustomization.yaml
@@ -215,6 +217,33 @@ comes from a Secret that External Secrets creates there.
   (`ErrorBudgetBurn`). See them in the Pyrra UI or the "Pyrra" dashboards in Grafana. A tenant is
   probed only if its NetworkPolicy lets the prober in (`apps/base/whoami/networkpolicy.yaml`).
 - **Storage:** Prometheus 10Gi (7 days), Alertmanager 1Gi. Both disks are deleted with the release.
+
+## UI
+
+Headlamp in `headlamp` (`infrastructure/controllers/headlamp.yaml`), with the Flux plugin: each
+Kustomization and HelmRelease, what it applied, and whether it is healthy. Not exposed; it holds no
+rights of its own, so everyone signs in with their own token and sees what their RBAC allows.
+
+```bash
+kubectl -n headlamp port-forward svc/headlamp 4466:80    # then http://localhost:4466
+gcloud --configuration=<config> auth print-access-token  # paste as the token; valid one hour
+```
+
+Read-only access for someone else, in two layers, with no e-mail in git:
+
+1. **Reach the cluster (IAM):** add `user:<e-mail>` to `cluster_users` (the `TF_VAR_CLUSTER_USERS`
+   secret and the local tfvars) and apply `bootstrap/ci`.
+2. **See inside (RBAC):** put the e-mail in a free viewer slot, which binds `view` on the cluster and
+   port-forward to Headlamp only (`infrastructure/configs/rbac.yaml`):
+
+   ```bash
+   kubectl -n flux-system patch configmap cluster-vars --type merge \
+     -p '{"data":{"cluster_viewer_1":"<e-mail>"}}'
+   flux reconcile kustomization infra-configs -n flux-system
+   ```
+
+`view` shows workloads, pod logs, events and Flux objects; not Secrets, exec, or port-forward
+anywhere but Headlamp. To take access away, remove the key and the IAM member again.
 
 ## Chaos
 
