@@ -81,6 +81,10 @@ metadata:
 spec:
   dependsOn:
     - name: infra-configs
+    # nginx resolves its two upstreams at start and exits if a Service is
+    # missing (seen: three restarts on the first rollout)
+    - name: workloads-esplora
+    - name: workloads-esplora-liquid
   interval: 10m
   retryInterval: 1m
   timeout: 5m
