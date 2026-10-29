@@ -1,0 +1,26 @@
+###
+# Entry point for the non-prod cluster, part 3: chain workloads.
+#
+# Platform-owned like infrastructure/, so it runs as `kustomize-controller`,
+# but in its own namespace class (gitops/workloads/esplora/namespace.yaml):
+# Pod Security `baseline`, no tenant label. After infra-configs, because it
+# needs the ServiceMonitor and PrometheusRule CRDs.
+###
+apiVersion: kustomize.toolkit.fluxcd.io/v1
+kind: Kustomization
+metadata:
+  name: workloads-esplora
+  namespace: flux-system
+spec:
+  dependsOn:
+    - name: infra-configs
+  interval: 1h
+  retryInterval: 2m
+  timeout: 15m # first pull of a ~430 MB image, then bitcoind and the first index
+  sourceRef:
+    kind: GitRepository
+    name: flux-system
+  path: ./gitops/workloads/esplora
+  serviceAccountName: kustomize-controller
+  prune: true
+  wait: true # healthy means the StatefulSet is ready

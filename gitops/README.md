@@ -15,7 +15,8 @@ gitops/
 │       ├── flux-system/        # Flux itself + the multi-tenancy lockdown patches;
 │       │                       # the two gotk-*.yaml files are filled in by `flux bootstrap`
 │       ├── infrastructure.yaml # platform: infra-controllers -> infra-configs
-│       └── tenants.yaml        # one block per tenant (<app>-<env>)
+│       ├── tenants.yaml        # one block per tenant (<app>-<env>)
+│       └── workloads.yaml      # chain workloads, one block per workload
 ├── infrastructure/             # PLATFORM-OWNED, applied as cluster-admin
 │   ├── controllers/            # operators + CRDs as HelmReleases (CloudNativePG, kube-prometheus-stack,
 │   │                           # External Secrets, Reloader, blackbox exporter, Pyrra)
@@ -23,15 +24,17 @@ gitops/
 │                               # SLOs, Grafana and its secret)
 ├── tenants/
 │   └── base/                   # PLATFORM-OWNED: the fence around one tenant, stamped per tenant
-└── apps/                       # TENANT-OWNED, applied as the tenant's own account
-    ├── base/whoami/            # the app once, without an environment
-    └── nonprod/
-        ├── whoami-dev/
-        └── whoami-staging/
+├── apps/                       # TENANT-OWNED, applied as the tenant's own account
+│   ├── base/whoami/            # the app once, without an environment
+│   └── nonprod/
+│       ├── whoami-dev/
+│       └── whoami-staging/
+└── workloads/                  # PLATFORM-OWNED chain workloads, Pod Security baseline
+    └── esplora/                # the public Esplora image on regtest
 ```
 
-Order is explicit: `infra-controllers` → `infra-configs` → each `tenant-*`, every step waiting for the one
-before to be healthy (`dependsOn` + `wait: true`).
+Order is explicit: `infra-controllers` → `infra-configs` → each `tenant-*` and each `workloads-*`, every
+step waiting for the one before to be healthy (`dependsOn` + `wait: true`).
 
 ## Tenant isolation
 
@@ -76,6 +79,30 @@ Three things this does **not** do:
   in another namespace.
 - A tenant may still add its own NetworkPolicy that allows all ingress (`ingress: [{}]`). Policies add
   up, so that cancels the baseline. Limiting what allow rules may open is left to the policy drill.
+
+## Chain workloads
+
+A third class next to the platform and the tenants, for long-lived, stateful node software such as
+Esplora (bitcoind + electrs + nginx in one image). Platform-owned and applied as `kustomize-controller`,
+but in their own namespaces:
+
+| | Platform | Chain workloads | Tenants |
+|---|---|---|---|
+| Example | Flux, monitoring, CloudNativePG | esplora | whoami |
+| Applied as | `kustomize-controller` / `helm-controller` | `kustomize-controller` | the tenant's own account |
+| Pod Security | per component (monitoring is `privileged`) | `baseline`; warn and audit at `restricted` | `restricted` |
+| Ingress | per component | default-deny, then Prometheus to the metrics port only | default-deny, then the tenant's own rules |
+| `tenant` label | no | no | yes, so the admission policies apply |
+
+`baseline` because the public Esplora image runs runit as root and nginx on :80. It still refuses
+privileged pods, host namespaces and hostPath. Moving to `restricted` means non-root images.
+
+Not done yet: a tainted node pool of their own (a Terraform change), and anything reachable from outside.
+
+```bash
+kubectl -n esplora port-forward svc/esplora 18080:80 14224:4224
+# UI http://127.0.0.1:18080/regtest/   metrics http://127.0.0.1:14224/metrics
+```
 
 ## From Argo CD (eks-practice v2) to Flux (here)
 

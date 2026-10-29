@@ -1,0 +1,21 @@
+###
+# Chain workloads: the third class next to the platform and the tenants.
+# Platform-owned and applied as cluster-admin like infrastructure/, but kept
+# apart because these are long-lived, stateful and slow to restart.
+#
+# Pod Security is `baseline`, not `restricted`: the public Esplora image runs
+# runit as root and nginx on :80. baseline still refuses privileged pods,
+# host namespaces and hostPath. warn / audit stay at `restricted`, so every
+# apply lists what is left to fix before this namespace can tighten.
+#
+# No `tenant` label: the tenant admission policies do not apply here.
+###
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: esplora
+  labels:
+    workload-class: chain
+    pod-security.kubernetes.io/enforce: baseline
+    pod-security.kubernetes.io/warn: restricted
+    pod-security.kubernetes.io/audit: restricted
