@@ -1,5 +1,5 @@
 ###
-# Prometheus, Alertmanager and Grafana (kube-prometheus-stack), plus the
+# Prometheus and Alertmanager (kube-prometheus-stack), plus the
 # operator that turns PrometheusRule / ServiceMonitor objects into config.
 # Same pattern as cloudnative-pg.yaml: the release lives in flux-system and runs
 # as helm-controller; the workload lands in `monitoring`.
@@ -98,10 +98,12 @@ spec:
         persistentVolumeClaimRetentionPolicy: { whenDeleted: Delete }
         resources: { requests: { cpu: 20m, memory: 64Mi }, limits: { memory: 128Mi } }
     grafana:
-      # No adminPassword: the chart generates one into the kube-prometheus-stack-grafana
-      # Secret and keeps it on upgrade. Drill 4 moves it to Secret Manager.
-      persistence: { enabled: false } # dashboards come from the chart
-      resources: { requests: { cpu: 50m, memory: 256Mi }, limits: { memory: 512Mi } }
+      # Grafana is its own release in infrastructure/configs/grafana.yaml: it
+      # needs a Secret that only exists once the configs layer has run. The
+      # datasource and dashboard ConfigMaps are still rendered here.
+      enabled: false
+      forceDeployDatasources: true
+      forceDeployDashboards: true
     prometheusOperator:
       resources: { requests: { cpu: 50m, memory: 128Mi }, limits: { memory: 256Mi } }
     kube-state-metrics:

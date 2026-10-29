@@ -1,0 +1,46 @@
+###
+# Reloader: restarts a Deployment when a Secret it names changes. Grafana reads
+# its admin password from the environment, so a rotated password only takes
+# effect after a restart.
+#
+# Scoped to its own namespace (`monitoring`): with watchGlobally off the chart
+# grants a Role, not a ClusterRole, so it cannot read Secrets elsewhere.
+###
+apiVersion: source.toolkit.fluxcd.io/v1
+kind: HelmRepository
+metadata:
+  name: stakater
+  namespace: flux-system
+spec:
+  interval: 12h
+  url: https://stakater.github.io/stakater-charts
+---
+apiVersion: helm.toolkit.fluxcd.io/v2
+kind: HelmRelease
+metadata:
+  name: reloader
+  namespace: flux-system
+spec:
+  interval: 1h
+  serviceAccountName: helm-controller
+  targetNamespace: monitoring # created in kube-prometheus-stack.yaml
+  releaseName: reloader
+  chart:
+    spec:
+      chart: reloader
+      version: "2.2.18" # pinned; an upgrade is a reviewed change in git
+      sourceRef:
+        kind: HelmRepository
+        name: stakater
+  install:
+    remediation:
+      retries: 3
+  upgrade:
+    remediation:
+      retries: 3
+      remediateLastFailure: true
+  values:
+    reloader:
+      watchGlobally: false
+      deployment:
+        resources: { requests: { cpu: 10m, memory: 64Mi }, limits: { memory: 128Mi } }
