@@ -1,0 +1,27 @@
+###
+# ClusterIP only. Nothing is exposed outside the cluster; see
+# "Chain workloads" in gitops/README.md for port-forward.
+###
+apiVersion: v1
+kind: Service
+metadata:
+  name: esplora
+  namespace: esplora-liquid
+  labels:
+    app: esplora
+spec:
+  selector:
+    app: esplora
+  ports:
+    - name: http
+      port: 80
+      targetPort: http
+    - name: metrics
+      port: 4224
+      targetPort: metrics
+    - name: chain-metrics
+      port: 9101
+      targetPort: chain-metrics
+    - name: electrum
+      port: 50001
+      targetPort: electrum

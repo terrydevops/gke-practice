@@ -1,0 +1,74 @@
+###
+# Same baseline as a tenant namespace: nothing reaches the pod until opened.
+# The only opening is Prometheus scraping electrs' metrics. The UI, the REST
+# API and Electrum stay closed; reach them with kubectl port-forward.
+#
+# Egress is closed too, which tenants do not have: on regtest every process
+# talks to the others over localhost or a unix socket, and nothing needs DNS.
+# The image's tor fails to bootstrap, which only shows in its log.
+###
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: default-deny-ingress
+  namespace: esplora-liquid
+spec:
+  podSelector: {}
+  policyTypes:
+    - Ingress
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: default-deny-egress
+  namespace: esplora-liquid
+spec:
+  podSelector: {}
+  policyTypes:
+    - Egress
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-prometheus-metrics
+  namespace: esplora-liquid
+spec:
+  podSelector:
+    matchLabels:
+      app: esplora
+  policyTypes:
+    - Ingress
+  ingress:
+    - from:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: monitoring
+          podSelector:
+            matchLabels:
+              app.kubernetes.io/name: prometheus
+      ports:
+        - protocol: TCP
+          port: 4224
+        - protocol: TCP
+          port: 9101
+---
+# The public explorer's nginx (gitops/apps/base/explorer) reads the Liquid API on :80.
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-explorer-api
+  namespace: esplora-liquid
+spec:
+  podSelector:
+    matchLabels:
+      app: esplora
+  policyTypes:
+    - Ingress
+  ingress:
+    - from:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: explorer-dev-app
+      ports:
+        - protocol: TCP
+          port: 80

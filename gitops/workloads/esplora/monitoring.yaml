@@ -1,7 +1,8 @@
 ###
 # Prometheus (monitoring) picks up monitors and rules from every namespace
 # (serviceMonitorSelectorNilUsesHelmValues: false in kube-prometheus-stack.yaml).
-# Metric names: blockstream/prep/electrs-metrics.md, checked against v3.0.1.
+# Two endpoints: electrs' own metrics (:4224) and the chain metrics of
+# components/chainwatch (:9101). Names: blockstream/prep/electrs-metrics.md.
 ###
 apiVersion: monitoring.coreos.com/v1
 kind: ServiceMonitor
@@ -18,6 +19,8 @@ spec:
   endpoints:
     - port: metrics
       interval: 30s
+    - port: chain-metrics
+      interval: 30s
 ---
 apiVersion: monitoring.coreos.com/v1
 kind: PrometheusRule
@@ -28,18 +31,82 @@ spec:
   groups:
     - name: esplora
       rules:
-        # The main loop runs every 5 s, so a flat count means electrs is stuck.
+        # electrs itself
         - alert: ElectrsMainLoopStalled
           expr: changes(electrs_main_loop_count{namespace="esplora"}[5m]) == 0
           for: 5m
-          labels:
-            severity: warning
+          labels: { severity: warning }
           annotations:
-            summary: "electrs main loop has not advanced for 5 minutes"
+            summary: "bitcoin-regtest: electrs main loop has not advanced for 5 minutes"
         - alert: ElectrsRocksDBWriteStopped
           expr: max(rocksdb_is_write_stopped{namespace="esplora"}) > 0
           for: 1m
-          labels:
-            severity: critical
+          labels: { severity: critical }
           annotations:
-            summary: "RocksDB has stopped writes in the electrs index"
+            summary: "bitcoin-regtest: RocksDB has stopped writes in the electrs index"
+        - alert: ElectrsIndexBehind
+          expr: max(chain_blocks{namespace="esplora"}) - max(tip_height{namespace="esplora"}) > 1
+          for: 5m
+          labels: { severity: warning }
+          annotations:
+            summary: "bitcoin-regtest: electrs is more than one block behind its node"
+        # the node and the API in front of it
+        - alert: ChainRPCDown
+          expr: max(chain_rpc_up{namespace="esplora"}) == 0
+          for: 2m
+          labels: { severity: critical }
+          annotations:
+            summary: "bitcoin-regtest: the node does not answer RPC"
+        - alert: ChainAPIDown
+          expr: max(chain_api_up{namespace="esplora"}) == 0
+          for: 2m
+          labels: { severity: critical }
+          annotations:
+            summary: "bitcoin-regtest: the REST API does not answer"
+        - alert: ChainAPIBehind
+          expr: max(chain_blocks{namespace="esplora"}) - max(chain_api_tip_height{namespace="esplora"}) > 1
+          for: 5m
+          labels: { severity: warning }
+          annotations:
+            summary: "bitcoin-regtest: the API serves a tip more than one block old"
+        - alert: ChainHeadersAhead
+          expr: max(chain_headers{namespace="esplora"}) - max(chain_blocks{namespace="esplora"}) > 2
+          for: 10m
+          labels: { severity: warning }
+          annotations:
+            summary: "bitcoin-regtest: the node knows of blocks it has not validated"
+        - alert: ChainwatchStale
+          expr: time() - max(chainwatch_last_run_timestamp_seconds{namespace="esplora"}) > 120 or absent(chainwatch_last_run_timestamp_seconds{namespace="esplora"})
+          for: 5m
+          labels: { severity: warning }
+          annotations:
+            summary: "bitcoin-regtest: chain metrics are stale; the alerts below cannot be trusted"
+        # The signal Liquid's monitoring raised at 14:10 UTC on 2026-09-06, four
+        # hours before the network was halted. Blocks come every 10 minutes here.
+        - alert: BlockProductionStalled
+          expr: time() - max(chain_tip_timestamp_seconds{namespace="esplora"}) > 1800
+          for: 1m
+          labels: { severity: critical }
+          annotations:
+            summary: "bitcoin-regtest: no new block for more than 1800 seconds"
+            runbook: docs/esplora-explorer.md#runbook-block-production-stalled
+        - alert: ChainMempoolNearFull
+          expr: max(chain_mempool_usage_bytes{namespace="esplora"} / chain_mempool_max_bytes{namespace="esplora"}) > 0.8
+          for: 10m
+          labels: { severity: warning }
+          annotations:
+            summary: "bitcoin-regtest: mempool above 80% of maxmempool"
+        # Outflow: an explicit output above 100 coins in the tip block. Liquid's
+        # blinded outputs carry no visible amount and cannot be checked this way.
+        - alert: ChainLargeOutput
+          expr: max(chain_largest_output_tip_block_sats{namespace="esplora"}) > 10000000000
+          labels: { severity: warning }
+          annotations:
+            summary: "bitcoin-regtest: an output above 100 coins in the latest block"
+            runbook: docs/esplora-explorer.md#runbook-unusual-outflow
+        - alert: ChainVolumeFillingUp
+          expr: predict_linear(kubelet_volume_stats_available_bytes{namespace="esplora"}[6h], 3 * 86400) < 0
+          for: 30m
+          labels: { severity: warning }
+          annotations:
+            summary: "bitcoin-regtest: the data volume fills within three days at this rate"

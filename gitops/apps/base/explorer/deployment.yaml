@@ -1,7 +1,8 @@
 ###
 # The Esplora UI without building an image. The pinned Esplora image already
 # holds the built UI for every flavor; the init container copies the plain
-# regtest build (not the Blockstream-branded one) into an emptyDir, and an
+# regtest builds, Bitcoin and Liquid (not the Blockstream-branded ones), into
+# an emptyDir, and an
 # unprivileged nginx serves it. Both run as non-root, so the tenant's
 # "restricted" namespace admits them.
 ###
@@ -30,7 +31,7 @@ spec:
         - name: copy-ui
           # Same image and digest as gitops/workloads/esplora/statefulset.yaml.
           image: docker.io/blockstream/esplora:v3.0.1@sha256:c9fe515a855631b9d99d6fc72eca410fa26e6fbd23ed4a3edf7db35b1947db80
-          command: ["sh", "-c", "mkdir -p /site/regtest && cp -r /srv/explorer/static/bitcoin-regtest/. /site/regtest/"]
+          command: ["sh", "-c", "mkdir -p /site/regtest /site/liquidregtest && cp -r /srv/explorer/static/bitcoin-regtest/. /site/regtest/ && cp -r /srv/explorer/static/liquid-regtest/. /site/liquidregtest/"]
           securityContext:
             allowPrivilegeEscalation: false
             readOnlyRootFilesystem: true

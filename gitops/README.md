@@ -89,7 +89,7 @@ but in their own namespaces:
 
 | | Platform | Chain workloads | Tenants |
 |---|---|---|---|
-| Example | Flux, monitoring, CloudNativePG | esplora | whoami |
+| Example | Flux, monitoring, CloudNativePG | esplora, esplora-liquid, cloudflared | whoami, explorer |
 | Applied as | `kustomize-controller` / `helm-controller` | `kustomize-controller` | the tenant's own account |
 | Pod Security | per component (monitoring is `privileged`) | `baseline`; warn and audit at `restricted` | `restricted` |
 | Ingress | per component | default-deny, then Prometheus to the metrics port only | default-deny, then the tenant's own rules |

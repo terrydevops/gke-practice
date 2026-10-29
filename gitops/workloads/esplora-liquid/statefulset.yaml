@@ -1,0 +1,153 @@
+###
+# The Liquid regtest flavor of the same public Esplora image: elementsd,
+# electrs and nginx under runit, like gitops/workloads/esplora. The flavor sets
+# validatepegin=0 and initialfreecoins, so it needs no bitcoind and no peers.
+# No federation either: one node signs every block, so peg-ins, peg-outs and
+# functionaries cannot be practised here.
+###
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: esplora
+  namespace: esplora-liquid
+  labels:
+    app: esplora
+spec:
+  serviceName: esplora
+  replicas: 1
+  selector:
+    matchLabels:
+      app: esplora
+  # the disk goes with the StatefulSet, as for Prometheus in monitoring
+  persistentVolumeClaimRetentionPolicy:
+    whenDeleted: Delete
+    whenScaled: Retain
+  template:
+    metadata:
+      labels:
+        app: esplora
+    spec:
+      # runit_boot.sh stops socat, then electrs, then bitcoind with a longer
+      # wait so it flushes cleanly. The default 30 s cuts that short.
+      terminationGracePeriodSeconds: 120
+      # Nothing in the image talks to the Kubernetes API, so no token is mounted.
+      automountServiceAccountToken: false
+      securityContext:
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+        - name: esplora
+          # Fully-qualified and pinned by digest (the multi-arch index of v3.0.1).
+          image: docker.io/blockstream/esplora:v3.0.1@sha256:c9fe515a855631b9d99d6fc72eca410fa26e6fbd23ed4a3edf7db35b1947db80
+          command: ["bash", "-c", "/srv/explorer/run.sh liquid-regtest explorer"]
+          # Root inside the container (runit, nginx on :80), but no gaining more
+          # through setuid binaries. Not yet tried on the cluster.
+          securityContext:
+            allowPrivilegeEscalation: false
+          ports:
+            - name: http
+              containerPort: 80
+            - name: metrics
+              containerPort: 4224
+            - name: electrum
+              containerPort: 50001
+          # Ready once nginx answers and electrs serves the tip through it.
+          # A startup probe covers the first boot: image pull is done, but
+          # bitcoind, mining and the first index still take a while.
+          startupProbe:
+            httpGet: { path: /liquidregtest/api/blocks/tip/height, port: 80 }
+            periodSeconds: 5
+            failureThreshold: 60 # 5 minutes
+          readinessProbe:
+            httpGet: { path: /liquidregtest/api/blocks/tip/height, port: 80 }
+            periodSeconds: 10
+            timeoutSeconds: 3
+            failureThreshold: 3
+          # No liveness probe: runit already restarts a crashed process inside
+          # the container, and a pod restart costs a full bitcoind restart.
+          resources:
+            # Measured locally on regtest: electrs alone about 124 MiB RSS.
+            requests:
+              cpu: 250m
+              memory: 512Mi
+            limits:
+              memory: 1Gi
+          volumeMounts:
+            - name: data
+              mountPath: /data
+        # Chain metrics (components/chainwatch/collect.sh): node RPC through the
+        # CLI and the cookie under /data, and the pod's own REST API.
+        - name: chainwatch
+          image: docker.io/blockstream/esplora:v3.0.1@sha256:c9fe515a855631b9d99d6fc72eca410fa26e6fbd23ed4a3edf7db35b1947db80
+          command: ["sh", "/chainwatch/collect.sh"]
+          env:
+            - { name: CHAIN, value: liquid-regtest }
+            - { name: CLI, value: /srv/explorer/liquid/bin/liquid-cli -conf=/data/.liquid.conf -datadir=/data/liquid }
+            - { name: API, value: http://127.0.0.1/liquidregtest/api }
+            - { name: NATIVE_ASSET, value: bitcoin } # its label in dumpassetlabels
+          securityContext:
+            allowPrivilegeEscalation: false # root only to read the 0600 cookie
+          resources:
+            requests: { cpu: 10m, memory: 16Mi }
+            limits: { memory: 64Mi }
+          volumeMounts:
+            - { name: data, mountPath: /data, readOnly: true }
+            - { name: chainwatch, mountPath: /chainwatch, readOnly: true }
+            - { name: metrics, mountPath: /metrics }
+        # A block a minute, like Liquid (components/chainwatch/miner.sh).
+        - name: miner
+          image: docker.io/blockstream/esplora:v3.0.1@sha256:c9fe515a855631b9d99d6fc72eca410fa26e6fbd23ed4a3edf7db35b1947db80
+          command: ["sh", "/chainwatch/miner.sh"]
+          env:
+            - { name: CLI, value: /srv/explorer/liquid/bin/liquid-cli -conf=/data/.liquid.conf -datadir=/data/liquid }
+            - { name: INTERVAL, value: "60" }
+          securityContext:
+            allowPrivilegeEscalation: false
+          resources:
+            requests: { cpu: 10m, memory: 16Mi }
+            limits: { memory: 64Mi }
+          volumeMounts:
+            - { name: data, mountPath: /data, readOnly: true }
+            - { name: chainwatch, mountPath: /chainwatch, readOnly: true }
+        # Serves the collector's file on :9101 with a proper Content-Type.
+        - name: metrics
+          image: docker.io/nginxinc/nginx-unprivileged:1.30.4-alpine@sha256:adf5042a17f4ecdd200c595fa9ffd1be37efb18f89a830bd1a00e4ab4d59d42c
+          ports:
+            - name: chain-metrics
+              containerPort: 9101
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            runAsNonRoot: true
+            runAsUser: 101
+            capabilities:
+              drop: ["ALL"]
+          resources:
+            requests: { cpu: 5m, memory: 16Mi }
+            limits: { memory: 64Mi }
+          volumeMounts:
+            - { name: metrics, mountPath: /metrics, readOnly: true }
+            - { name: chainwatch-conf, mountPath: /etc/nginx/conf.d, readOnly: true }
+            - { name: metrics-tmp, mountPath: /tmp }
+      volumes:
+        - name: chainwatch
+          configMap:
+            name: chainwatch
+        - name: chainwatch-conf
+          configMap:
+            name: chainwatch
+            items:
+              - { key: metrics.conf, path: default.conf }
+        - name: metrics
+          emptyDir: {}
+        - name: metrics-tmp
+          emptyDir: {}
+  volumeClaimTemplates:
+    - metadata:
+        name: data
+      spec:
+        storageClassName: standard-rwo # pd-balanced, zonal
+        accessModes: [ReadWriteOnce]
+        resources:
+          requests:
+            storage: 10Gi

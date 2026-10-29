@@ -77,6 +77,72 @@ spec:
           volumeMounts:
             - name: data
               mountPath: /data
+        # Chain metrics (components/chainwatch/collect.sh): node RPC through the
+        # CLI and the cookie under /data, and the pod's own REST API.
+        - name: chainwatch
+          image: docker.io/blockstream/esplora:v3.0.1@sha256:c9fe515a855631b9d99d6fc72eca410fa26e6fbd23ed4a3edf7db35b1947db80
+          command: ["sh", "/chainwatch/collect.sh"]
+          env:
+            - { name: CHAIN, value: bitcoin-regtest }
+            - { name: CLI, value: /srv/explorer/bitcoin/bin/bitcoin-cli -conf=/data/.bitcoin.conf -datadir=/data/bitcoin }
+            - { name: API, value: http://127.0.0.1/regtest/api }
+          securityContext:
+            allowPrivilegeEscalation: false # root only to read the 0600 cookie
+          resources:
+            requests: { cpu: 10m, memory: 16Mi }
+            limits: { memory: 64Mi }
+          volumeMounts:
+            - { name: data, mountPath: /data, readOnly: true }
+            - { name: chainwatch, mountPath: /chainwatch, readOnly: true }
+            - { name: metrics, mountPath: /metrics }
+        # A block every 10 minutes, like mainnet (components/chainwatch/miner.sh).
+        - name: miner
+          image: docker.io/blockstream/esplora:v3.0.1@sha256:c9fe515a855631b9d99d6fc72eca410fa26e6fbd23ed4a3edf7db35b1947db80
+          command: ["sh", "/chainwatch/miner.sh"]
+          env:
+            - { name: CLI, value: /srv/explorer/bitcoin/bin/bitcoin-cli -conf=/data/.bitcoin.conf -datadir=/data/bitcoin }
+            - { name: INTERVAL, value: "600" }
+          securityContext:
+            allowPrivilegeEscalation: false
+          resources:
+            requests: { cpu: 10m, memory: 16Mi }
+            limits: { memory: 64Mi }
+          volumeMounts:
+            - { name: data, mountPath: /data, readOnly: true }
+            - { name: chainwatch, mountPath: /chainwatch, readOnly: true }
+        # Serves the collector's file on :9101 with a proper Content-Type.
+        - name: metrics
+          image: docker.io/nginxinc/nginx-unprivileged:1.30.4-alpine@sha256:adf5042a17f4ecdd200c595fa9ffd1be37efb18f89a830bd1a00e4ab4d59d42c
+          ports:
+            - name: chain-metrics
+              containerPort: 9101
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            runAsNonRoot: true
+            runAsUser: 101
+            capabilities:
+              drop: ["ALL"]
+          resources:
+            requests: { cpu: 5m, memory: 16Mi }
+            limits: { memory: 64Mi }
+          volumeMounts:
+            - { name: metrics, mountPath: /metrics, readOnly: true }
+            - { name: chainwatch-conf, mountPath: /etc/nginx/conf.d, readOnly: true }
+            - { name: metrics-tmp, mountPath: /tmp }
+      volumes:
+        - name: chainwatch
+          configMap:
+            name: chainwatch
+        - name: chainwatch-conf
+          configMap:
+            name: chainwatch
+            items:
+              - { key: metrics.conf, path: default.conf }
+        - name: metrics
+          emptyDir: {}
+        - name: metrics-tmp
+          emptyDir: {}
   volumeClaimTemplates:
     - metadata:
         name: data

@@ -19,6 +19,9 @@ spec:
     - name: metrics
       port: 4224
       targetPort: metrics
+    - name: chain-metrics
+      port: 9101
+      targetPort: chain-metrics
     - name: electrum
       port: 50001
       targetPort: electrum

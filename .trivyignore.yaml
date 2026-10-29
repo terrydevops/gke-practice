@@ -17,5 +17,6 @@ misconfigurations:
   - id: KSV-0014
     paths:
       - gitops/workloads/esplora/statefulset.yaml
+      - gitops/workloads/esplora-liquid/statefulset.yaml
     statement: public Esplora image writes runit, nginx and tor state under /etc, /run and /var at start
     expired_at: 2027-04-29

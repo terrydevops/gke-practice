@@ -1,0 +1,13 @@
+###
+# Chain metrics and a block producer, shared by every regtest chain workload
+# (esplora, esplora-liquid). A component, so each workload stamps its own
+# ConfigMap; the containers that use it are in each StatefulSet.
+###
+apiVersion: kustomize.config.k8s.io/v1alpha1
+kind: Component
+configMapGenerator:
+  - name: chainwatch
+    files:
+      - collect.sh
+      - miner.sh
+      - metrics.conf
