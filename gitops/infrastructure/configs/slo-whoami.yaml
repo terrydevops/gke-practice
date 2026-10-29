@@ -1,0 +1,69 @@
+###
+# Service level objectives for whoami, owned by the platform like alerts.yaml.
+#
+# The blackbox exporter probes each environment's Service every 15s from
+# inside the cluster. Pyrra reads the probe results as two objectives, each
+# with its own budget per environment (grouping by `instance`):
+#  - availability: the probe succeeded;
+#  - latency: it succeeded in under 250ms. Blackbox gives a gauge, not a
+#    histogram, so a recording rule turns each probe into 0 or 1 first.
+# The window is 7d because Prometheus keeps 7d of data.
+###
+apiVersion: monitoring.coreos.com/v1
+kind: Probe
+metadata:
+  name: whoami
+  namespace: monitoring
+spec:
+  interval: 15s
+  module: http_2xx
+  prober:
+    url: blackbox-exporter.monitoring.svc:9115
+  targets:
+    staticConfig:
+      static:
+        - http://whoami.whoami-dev-app.svc
+        - http://whoami.whoami-staging-app.svc
+---
+apiVersion: monitoring.coreos.com/v1
+kind: PrometheusRule
+metadata:
+  name: whoami-sli
+  namespace: monitoring
+spec:
+  groups:
+    - name: whoami-sli
+      rules:
+        # 1 when the probe succeeded under 250ms, 0 otherwise (a failed probe is not fast)
+        - record: probe_fast
+          expr: >-
+            (probe_duration_seconds{job="probe/monitoring/whoami"} < bool 0.25)
+            * probe_success{job="probe/monitoring/whoami"}
+---
+apiVersion: pyrra.dev/v1alpha1
+kind: ServiceLevelObjective
+metadata:
+  name: whoami-availability
+  namespace: monitoring
+spec:
+  description: whoami answers a probe from inside the cluster
+  target: "99"
+  window: 7d
+  indicator:
+    bool_gauge:
+      metric: probe_success{job="probe/monitoring/whoami"}
+      grouping: [instance]
+---
+apiVersion: pyrra.dev/v1alpha1
+kind: ServiceLevelObjective
+metadata:
+  name: whoami-latency
+  namespace: monitoring
+spec:
+  description: whoami answers a probe in under 250ms
+  target: "95"
+  window: 7d
+  indicator:
+    bool_gauge:
+      metric: probe_fast{job="probe/monitoring/whoami"}
+      grouping: [instance]

@@ -5,3 +5,5 @@ resources:
   - kube-prometheus-stack.yaml
   - external-secrets.yaml
   - reloader.yaml
+  - blackbox-exporter.yaml
+  - pyrra.yaml
