@@ -9,8 +9,3 @@ resources:
 replicas:
   - name: whoami
     count: 1
-# TEMPORARY: a tag that does not exist, to see Flux report a failed commit
-# status on GitHub. Reverted right after.
-images:
-  - name: docker.io/traefik/whoami
-    newTag: v0.0.0-does-not-exist
