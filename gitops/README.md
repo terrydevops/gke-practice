@@ -19,7 +19,7 @@ gitops/
 │       └── workloads.yaml      # chain workloads, one block per workload
 ├── infrastructure/             # PLATFORM-OWNED, applied as cluster-admin
 │   ├── controllers/            # operators + CRDs as HelmReleases (CloudNativePG, kube-prometheus-stack,
-│   │                           # External Secrets, Reloader, blackbox exporter, Pyrra)
+│   │                           # External Secrets, Reloader, blackbox exporter, Pyrra, Chaos Mesh)
 │   └── configs/                # needs those CRDs or cluster-wide rights (RBAC for humans, alerts,
 │                               # SLOs, Grafana and its secret, Flux commit status)
 ├── tenants/
@@ -29,8 +29,9 @@ gitops/
 │   └── nonprod/
 │       ├── whoami-dev/
 │       └── whoami-staging/
-└── workloads/                  # PLATFORM-OWNED chain workloads, Pod Security baseline
-    └── esplora/                # the public Esplora image on regtest
+├── workloads/                  # PLATFORM-OWNED chain workloads, Pod Security baseline
+│   └── esplora/                # the public Esplora image on regtest
+└── chaos/                      # fault injection experiments, applied by hand only (never by Flux)
 ```
 
 Order is explicit: `infra-controllers` → `infra-configs` → each `tenant-*` and each `workloads-*`, every
@@ -215,6 +216,23 @@ comes from a Secret that External Secrets creates there.
   probed only if its NetworkPolicy lets the prober in (`apps/base/whoami/networkpolicy.yaml`).
 - **Storage:** Prometheus 10Gi (7 days), Alertmanager 1Gi. Both disks are deleted with the release.
 
+## Chaos
+
+Chaos Mesh in `chaos-mesh` (`infrastructure/controllers/chaos-mesh.yaml`); the experiments are in
+`chaos/`, applied by hand only. See `chaos/README.md` for running one.
+
+- **Reach:** only pods in namespaces annotated `chaos-mesh.org/inject: enabled`, set by `tenants/base`
+  on tenant namespaces. Tenants have no rights on the chaos kinds.
+- **Privileged:** chaos-daemon runs on every node with host PID, privileged, and the containerd
+  socket; that is how it enters a pod to add tc rules or stress processes.
+- **Dashboard:** not exposed. It asks for a token and acts with that token's rights; on GKE that can
+  be the caller's own Google access token.
+
+  ```bash
+  kubectl -n chaos-mesh port-forward svc/chaos-dashboard 2333
+  gcloud --configuration=<config> auth print-access-token   # paste as the token
+  ```
+
 ## Commit status
 
 Flux marks every commit on `main` on GitHub with one status per Kustomization (success or failure),
@@ -252,7 +270,8 @@ rules, node service account. What stays is `bootstrap/` (state bucket, CI identi
 the Grafana password).
 
 Deleting the cluster does not delete the disks behind its PersistentVolumes. The only ones today are
-monitoring's, so remove that release first; its disks go with it (`whenDeleted: Delete`):
+monitoring's, so remove that release first; its disks go with it (`whenDeleted: Delete`). Check first
+that no chaos experiment is still running (`kubectl get podchaos,networkchaos,stresschaos -A`):
 
 ```bash
 flux suspend kustomization infra-controllers   # or Flux puts the release back

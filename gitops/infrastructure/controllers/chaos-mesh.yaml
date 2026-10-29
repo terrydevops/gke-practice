@@ -1,0 +1,75 @@
+###
+# Chaos Mesh: injects faults (pod kill, network delay, CPU stress) on demand.
+# The experiments are in gitops/chaos/; no Flux Kustomization applies them, so
+# a fault is only ever started by hand.
+#
+# Where it may act: only pods in namespaces annotated
+# `chaos-mesh.org/inject: enabled` (enableFilterNamespace). tenants/base sets
+# that on tenant namespaces; monitoring, esplora and flux-system are out of
+# reach. Tenants get no rights on the chaos-mesh.org kinds (the chart adds no
+# aggregation labels), and its webhooks only see those kinds, never pods, so a
+# down controller blocks nothing else.
+#
+# chaos-daemon runs on every node, privileged with host PID: it enters the
+# target pod's namespaces to add tc rules and stress processes. Hence the
+# `privileged` Pod Security level on this namespace.
+#
+# The dashboard is not exposed; see "Chaos" in gitops/README.md for
+# port-forward. Its security mode asks each user for a token and acts with that
+# token's rights.
+###
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: chaos-mesh
+  labels:
+    pod-security.kubernetes.io/enforce: privileged
+---
+apiVersion: source.toolkit.fluxcd.io/v1
+kind: HelmRepository
+metadata:
+  name: chaos-mesh
+  namespace: flux-system
+spec:
+  interval: 12h
+  url: https://charts.chaos-mesh.org
+---
+apiVersion: helm.toolkit.fluxcd.io/v2
+kind: HelmRelease
+metadata:
+  name: chaos-mesh
+  namespace: flux-system
+spec:
+  interval: 1h
+  serviceAccountName: helm-controller
+  targetNamespace: chaos-mesh
+  releaseName: chaos-mesh
+  chart:
+    spec:
+      chart: chaos-mesh
+      version: "2.8.4" # pinned; an upgrade is a reviewed change in git
+      sourceRef:
+        kind: HelmRepository
+        name: chaos-mesh
+  install:
+    crds: CreateReplace
+    remediation:
+      retries: 3
+  upgrade:
+    crds: CreateReplace
+    remediation:
+      retries: 3
+      remediateLastFailure: true
+  values:
+    controllerManager:
+      replicaCount: 1
+      enableFilterNamespace: true
+      resources: { requests: { cpu: 25m, memory: 128Mi }, limits: { memory: 256Mi } }
+    chaosDaemon:
+      runtime: containerd
+      socketPath: /run/containerd/containerd.sock
+      resources: { requests: { cpu: 10m, memory: 64Mi }, limits: { memory: 256Mi } }
+    dashboard:
+      service: { type: ClusterIP } # the chart's default is NodePort
+      resources: { requests: { cpu: 10m, memory: 128Mi }, limits: { memory: 256Mi } }
+    dnsServer: { create: false } # only DNSChaos needs it

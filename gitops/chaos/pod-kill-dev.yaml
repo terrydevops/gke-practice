@@ -1,0 +1,16 @@
+###
+# Kill whoami-dev's only pod. The Deployment starts a new one by itself; the
+# availability SLO shows how long the Service had no endpoint.
+###
+apiVersion: chaos-mesh.org/v1alpha1
+kind: PodChaos
+metadata:
+  name: whoami-dev-pod-kill
+  namespace: chaos-mesh
+spec:
+  action: pod-kill
+  mode: one
+  selector:
+    namespaces: [whoami-dev-app]
+    labelSelectors:
+      app: whoami
