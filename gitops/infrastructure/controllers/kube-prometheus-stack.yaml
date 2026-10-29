@@ -86,7 +86,7 @@ spec:
         serviceMonitorSelectorNilUsesHelmValues: false
         podMonitorSelectorNilUsesHelmValues: false
         probeSelectorNilUsesHelmValues: false
-        resources: { requests: { cpu: 200m, memory: 1Gi }, limits: { memory: 2Gi } }
+        resources: { requests: { cpu: 100m, memory: 1Gi }, limits: { memory: 2Gi } } # uses about 60m
     alertmanager:
       alertmanagerSpec:
         # An AlertmanagerConfig in `monitoring` (infrastructure/alerting) routes
