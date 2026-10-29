@@ -1,0 +1,90 @@
+###
+# Headlamp: a web UI for the cluster, with the Flux plugin to see what each
+# Kustomization and HelmRelease applied and whether it is healthy.
+#
+# It holds no rights of its own. The chart binds its service account to
+# cluster-admin by default; that is off here, and Headlamp never falls back to
+# that account (unsafeUseServiceAccountToken stays false). Everyone signs in
+# with their own token and sees what their RBAC allows: see "UI" in
+# gitops/README.md for port-forward, the token, and read-only access for others.
+#
+# The plugin comes from its published image, pinned by digest, copied in by an
+# init container: nothing is downloaded when the pod starts.
+###
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: headlamp
+  labels:
+    pod-security.kubernetes.io/enforce: restricted
+---
+apiVersion: source.toolkit.fluxcd.io/v1
+kind: HelmRepository
+metadata:
+  name: headlamp
+  namespace: flux-system
+spec:
+  interval: 12h
+  url: https://kubernetes-sigs.github.io/headlamp/
+---
+apiVersion: helm.toolkit.fluxcd.io/v2
+kind: HelmRelease
+metadata:
+  name: headlamp
+  namespace: flux-system
+spec:
+  interval: 1h
+  serviceAccountName: helm-controller
+  targetNamespace: headlamp
+  releaseName: headlamp
+  chart:
+    spec:
+      chart: headlamp
+      version: "0.45.0" # pinned; an upgrade is a reviewed change in git
+      sourceRef:
+        kind: HelmRepository
+        name: headlamp
+  install:
+    remediation:
+      retries: 3
+  upgrade:
+    remediation:
+      retries: 3
+      remediateLastFailure: true
+  values:
+    clusterRoleBinding:
+      create: false # the chart's default binds cluster-admin
+    config:
+      pluginsDir: /headlamp/plugins
+    initContainers:
+      - name: flux-plugin
+        image: ghcr.io/headlamp-k8s/headlamp-plugin-flux:v0.7.0@sha256:636c7a5ae0d4eb196c192f8f1cde06f20f1f5ebdf1863f6e57d22444d8b8360c
+        command: [sh, -c, "cp -r /plugins/* /headlamp/plugins/"]
+        securityContext:
+          runAsNonRoot: true
+          runAsUser: 100
+          runAsGroup: 101
+          allowPrivilegeEscalation: false
+          readOnlyRootFilesystem: true
+          capabilities: { drop: [ALL] }
+          seccompProfile: { type: RuntimeDefault }
+        volumeMounts:
+          - name: plugins
+            mountPath: /headlamp/plugins
+    volumes:
+      - name: plugins
+        emptyDir: {}
+    volumeMounts:
+      - name: plugins
+        mountPath: /headlamp/plugins
+    podSecurityContext:
+      seccompProfile: { type: RuntimeDefault }
+    securityContext:
+      runAsNonRoot: true
+      runAsUser: 100
+      runAsGroup: 101
+      privileged: false
+      allowPrivilegeEscalation: false
+      readOnlyRootFilesystem: true # the chart mounts an emptyDir on /tmp
+      capabilities: { drop: [ALL] }
+    resources: { requests: { cpu: 10m, memory: 64Mi }, limits: { memory: 256Mi } }

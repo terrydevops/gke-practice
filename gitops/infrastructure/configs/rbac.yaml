@@ -19,3 +19,62 @@ subjects:
   - apiGroup: rbac.authorization.k8s.io
     kind: User
     name: ${cluster_admin}
+---
+# Read-only for people who want to look (the UI, kubectl get): the built-in
+# `view` role, which covers workloads and Flux objects but not Secrets, exec
+# or port-forward. Each slot's e-mail comes from cluster-vars; an empty slot is
+# `none`, which no Google account can be. A fourth person needs a fourth slot
+# here and below, still without the e-mail. See "UI" in gitops/README.md.
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: cluster-viewers
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: view
+subjects:
+  - apiGroup: rbac.authorization.k8s.io
+    kind: User
+    name: ${cluster_viewer_1:=none}
+  - apiGroup: rbac.authorization.k8s.io
+    kind: User
+    name: ${cluster_viewer_2:=none}
+  - apiGroup: rbac.authorization.k8s.io
+    kind: User
+    name: ${cluster_viewer_3:=none}
+---
+# The same people may port-forward to Headlamp, and to nothing else: `view`
+# has no port-forward, and the UI is only reachable that way.
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: headlamp-port-forward
+  namespace: headlamp
+rules:
+  - apiGroups: [""]
+    resources: [services, pods]
+    verbs: [get, list]
+  - apiGroups: [""]
+    resources: [pods/portforward]
+    verbs: [create]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: cluster-viewers-headlamp
+  namespace: headlamp
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: headlamp-port-forward
+subjects:
+  - apiGroup: rbac.authorization.k8s.io
+    kind: User
+    name: ${cluster_viewer_1:=none}
+  - apiGroup: rbac.authorization.k8s.io
+    kind: User
+    name: ${cluster_viewer_2:=none}
+  - apiGroup: rbac.authorization.k8s.io
+    kind: User
+    name: ${cluster_viewer_3:=none}

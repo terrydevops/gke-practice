@@ -8,3 +8,4 @@ resources:
   - blackbox-exporter.yaml
   - pyrra.yaml
   - chaos-mesh.yaml
+  - headlamp.yaml
