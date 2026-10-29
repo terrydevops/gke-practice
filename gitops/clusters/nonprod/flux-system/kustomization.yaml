@@ -48,3 +48,21 @@ patches:
     target:
       kind: Kustomization
       name: "flux-system"
+  # The controllers idle at 2-3m CPU; the default 100m request reserves a
+  # twentieth of a node each. Memory and limits stay as shipped.
+  - patch: |
+      apiVersion: apps/v1
+      kind: Deployment
+      metadata:
+        name: all
+      spec:
+        template:
+          spec:
+            containers:
+              - name: manager
+                resources:
+                  requests:
+                    cpu: 25m
+    target:
+      kind: Deployment
+      name: "(source-controller|kustomize-controller|helm-controller|notification-controller)"
