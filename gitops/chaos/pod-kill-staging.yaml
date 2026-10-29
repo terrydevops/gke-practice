@@ -1,0 +1,16 @@
+###
+# Kill one of whoami-staging's two pods. The other keeps serving, so the
+# availability SLO for staging should not move.
+###
+apiVersion: chaos-mesh.org/v1alpha1
+kind: PodChaos
+metadata:
+  name: whoami-staging-pod-kill
+  namespace: chaos-mesh
+spec:
+  action: pod-kill
+  mode: one
+  selector:
+    namespaces: [whoami-staging-app]
+    labelSelectors:
+      app: whoami

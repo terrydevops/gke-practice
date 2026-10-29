@@ -1,0 +1,21 @@
+###
+# One CPU worker at full load inside whoami-dev's pod for 5 minutes. The
+# container is limited to 100m, so it is throttled; whether that slows the
+# answers enough to show on the latency SLO is what this finds out.
+###
+apiVersion: chaos-mesh.org/v1alpha1
+kind: StressChaos
+metadata:
+  name: whoami-dev-cpu-stress
+  namespace: chaos-mesh
+spec:
+  mode: all
+  selector:
+    namespaces: [whoami-dev-app]
+    labelSelectors:
+      app: whoami
+  stressors:
+    cpu:
+      workers: 1
+      load: 100
+  duration: 5m

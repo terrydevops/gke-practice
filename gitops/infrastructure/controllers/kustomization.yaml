@@ -7,3 +7,4 @@ resources:
   - reloader.yaml
   - blackbox-exporter.yaml
   - pyrra.yaml
+  - chaos-mesh.yaml

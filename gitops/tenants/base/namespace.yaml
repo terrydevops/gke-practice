@@ -10,3 +10,7 @@ metadata:
     pod-security.kubernetes.io/enforce: restricted
     pod-security.kubernetes.io/warn: restricted
     pod-security.kubernetes.io/audit: restricted
+  annotations:
+    # Chaos Mesh may inject faults here, when someone starts an experiment by
+    # hand (gitops/chaos/). Namespaces without it are out of its reach.
+    chaos-mesh.org/inject: enabled

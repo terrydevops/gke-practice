@@ -1,0 +1,21 @@
+###
+# Delay everything whoami-dev sends by 300ms (+-50ms) for 5 minutes: above the
+# latency SLO's 250ms, far below the probe's 5s timeout, so latency burns and
+# availability does not.
+###
+apiVersion: chaos-mesh.org/v1alpha1
+kind: NetworkChaos
+metadata:
+  name: whoami-dev-network-delay
+  namespace: chaos-mesh
+spec:
+  action: delay
+  mode: all
+  selector:
+    namespaces: [whoami-dev-app]
+    labelSelectors:
+      app: whoami
+  delay:
+    latency: 300ms
+    jitter: 50ms
+  duration: 5m
