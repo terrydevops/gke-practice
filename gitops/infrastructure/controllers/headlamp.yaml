@@ -74,9 +74,13 @@ spec:
     volumes:
       - name: plugins
         emptyDir: {}
+      - name: config # it creates its default plugin dirs here; the root is read-only
+        emptyDir: {}
     volumeMounts:
       - name: plugins
         mountPath: /headlamp/plugins
+      - name: config
+        mountPath: /home/headlamp/.config
     podSecurityContext:
       seccompProfile: { type: RuntimeDefault }
     securityContext:
