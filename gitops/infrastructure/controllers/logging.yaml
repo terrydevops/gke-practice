@@ -10,9 +10,18 @@
 #                         (loki.source.kubernetes_events) and pushes them to Loki
 #   Loki (monolithic)   : one pod, filesystem on a 5Gi PD, 7 days
 #
-# Events only: no container logs, so no DaemonSet and little volume. GKE also
-# sends events to Cloud Logging; this copy is the one that works the same way
-# on EKS. The datasource and dashboard are in infrastructure/configs.
+# Container logs of the chain pods only (esplora, esplora-liquid), read through
+# the API server like kubectl logs: no DaemonSet, no host mounts. The esplora
+# container runs several processes under runit; svlogd tags each line with a
+# number (/data/logs/<process>/config), which becomes the label `component`:
+#   2 electrs   3 nginx   4 node (bitcoind or liquidd)   5 prerenderer
+#   6 tor       8 websocket
+# Dropped: electrs' line per tip-height poll (about 30k a day, from chainwatch
+# and the probes) and tor's bootstrap retries (egress is closed on purpose).
+#
+# GKE also sends events and container logs to Cloud Logging; this copy is the
+# one that works the same way on EKS. Datasource and dashboards are in
+# infrastructure/configs.
 ###
 apiVersion: source.toolkit.fluxcd.io/v1
 kind: OCIRepository
@@ -136,6 +145,62 @@ spec:
       configMap:
         content: |
           loki.source.kubernetes_events "cluster" {
+            forward_to = [loki.write.local.receiver]
+          }
+
+          discovery.kubernetes "chain_pods" {
+            role = "pod"
+            namespaces {
+              names = ["esplora", "esplora-liquid"]
+            }
+          }
+          discovery.relabel "chain_pods" {
+            targets = discovery.kubernetes.chain_pods.targets
+            rule {
+              source_labels = ["__meta_kubernetes_pod_container_name"]
+              regex         = "esplora"
+              action        = "keep"
+            }
+            rule {
+              source_labels = ["__meta_kubernetes_namespace"]
+              target_label  = "namespace"
+            }
+            rule {
+              source_labels = ["__meta_kubernetes_pod_name"]
+              target_label  = "pod"
+            }
+            rule {
+              replacement  = "chain-pods"
+              target_label = "job"
+            }
+          }
+          loki.source.kubernetes "chain_pods" {
+            targets    = discovery.relabel.chain_pods.output
+            forward_to = [loki.process.chain_pods.receiver]
+          }
+          loki.process "chain_pods" {
+            stage.drop {
+              expression = `handle GET /blocks/tip/height$`
+            }
+            stage.drop {
+              expression = `Problem bootstrapping\. Stuck at`
+            }
+            stage.regex {
+              expression = `^(?P<prefix>\d+)-(?P<line>.*)$`
+            }
+            stage.template {
+              source   = "component"
+              template = `{{ if eq .prefix "2" }}electrs{{ else if eq .prefix "3" }}nginx{{ else if eq .prefix "4" }}node{{ else if eq .prefix "5" }}prerenderer{{ else if eq .prefix "6" }}tor{{ else if eq .prefix "8" }}websocket{{ else }}other{{ end }}`
+            }
+            stage.labels {
+              values = { component = "" }
+            }
+            stage.output {
+              source = "line"
+            }
+            stage.drop {
+              expression = `^\s*$`
+            }
             forward_to = [loki.write.local.receiver]
           }
           loki.write "local" {
