@@ -220,6 +220,10 @@ comes from a Secret that External Secrets creates there.
   namespace and pushes them to Loki (one pod, 5Gi, 7 days); the API server itself keeps an hour.
   Dashboard "Kubernetes events": FailedScheduling, autoscaler scale-up decisions, BackOff, evictions,
   node events, each with its message. Explore → Loki, `{job="loki.source.kubernetes_events"} | logfmt`.
+- **Chain logs:** the same Alloy reads the `esplora` container of both chain pods through the API
+  server, labelled by process from svlogd's prefix: `{job="chain-pods", namespace="esplora-liquid",
+  component="node"}` (also `electrs`, `tor`, `nginx`, ...). Tip-height poll lines and tor bootstrap
+  retries are dropped. A logs row at the bottom of "Esplora chains".
 - **SLOs:** `infrastructure/configs/slo-whoami.yaml`. The blackbox exporter probes each whoami Service
   from inside the cluster every 15s; Pyrra turns the results into availability (99%) and latency
   (95% under 250ms) objectives over 7 days, one budget per environment, with burn-rate alerts
