@@ -1603,6 +1603,180 @@
           }
         }
       ]
+    },
+    {
+      "type": "row",
+      "title": "Logs: node and electrs (Loki)",
+      "id": 37,
+      "collapsed": false,
+      "gridPos": {
+        "h": 1,
+        "w": 24,
+        "x": 0,
+        "y": 77
+      },
+      "panels": []
+    },
+    {
+      "type": "timeseries",
+      "title": "electrs WARN / ERROR lines",
+      "id": 38,
+      "datasource": {
+        "type": "loki",
+        "uid": "loki"
+      },
+      "description": "Liquid shows one 'reconnecting to bitcoind' WARN per block: known, cause not found yet",
+      "gridPos": {
+        "h": 7,
+        "w": 12,
+        "x": 0,
+        "y": 78
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "loki",
+            "uid": "loki"
+          },
+          "legendFormat": "{{level}}",
+          "expr": "sum by (level) (count_over_time({job=\"chain-pods\", namespace=\"$namespace\", component=\"electrs\"} |~ \" - (WARN|ERROR) \" | regexp \" - (?P<level>WARN|ERROR) \" [$__auto]))"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "none",
+          "custom": {
+            "drawStyle": "bars",
+            "fillOpacity": 60
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom"
+        },
+        "tooltip": {
+          "mode": "multi"
+        }
+      }
+    },
+    {
+      "type": "timeseries",
+      "title": "Log lines by component",
+      "id": 39,
+      "datasource": {
+        "type": "loki",
+        "uid": "loki"
+      },
+      "description": "Tip-height poll lines and tor bootstrap retries are dropped at collection",
+      "gridPos": {
+        "h": 7,
+        "w": 12,
+        "x": 12,
+        "y": 78
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "loki",
+            "uid": "loki"
+          },
+          "legendFormat": "{{component}}",
+          "expr": "sum by (component) (count_over_time({job=\"chain-pods\", namespace=\"$namespace\"} [$__auto]))"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "none",
+          "custom": {
+            "drawStyle": "bars",
+            "fillOpacity": 60,
+            "stacking": {
+              "mode": "normal"
+            }
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom"
+        },
+        "tooltip": {
+          "mode": "multi"
+        }
+      }
+    },
+    {
+      "type": "logs",
+      "title": "Node log (bitcoind / liquidd)",
+      "id": 40,
+      "datasource": {
+        "type": "loki",
+        "uid": "loki"
+      },
+      "description": "UpdateTip, peers, reorgs, warnings",
+      "gridPos": {
+        "h": 10,
+        "w": 12,
+        "x": 0,
+        "y": 85
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "loki",
+            "uid": "loki"
+          },
+          "expr": "{job=\"chain-pods\", namespace=\"$namespace\", component=\"node\"}"
+        }
+      ],
+      "options": {
+        "showTime": true,
+        "wrapLogMessage": true,
+        "sortOrder": "Descending",
+        "enableLogDetails": true,
+        "dedupStrategy": "none"
+      }
+    },
+    {
+      "type": "logs",
+      "title": "electrs log",
+      "id": 41,
+      "datasource": {
+        "type": "loki",
+        "uid": "loki"
+      },
+      "description": "Indexing progress, requests other than the tip-height poll, reconnects",
+      "gridPos": {
+        "h": 10,
+        "w": 12,
+        "x": 12,
+        "y": 85
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "loki",
+            "uid": "loki"
+          },
+          "expr": "{job=\"chain-pods\", namespace=\"$namespace\", component=\"electrs\"}"
+        }
+      ],
+      "options": {
+        "showTime": true,
+        "wrapLogMessage": true,
+        "sortOrder": "Descending",
+        "enableLogDetails": true,
+        "dedupStrategy": "none"
+      }
     }
   ]
 }

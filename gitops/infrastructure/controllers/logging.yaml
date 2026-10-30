@@ -179,14 +179,15 @@ spec:
             forward_to = [loki.process.chain_pods.receiver]
           }
           loki.process "chain_pods" {
+            // Lines arrive with their trailing newline: every $ allows for it.
             stage.drop {
-              expression = `handle GET /blocks/tip/height$`
+              expression = `handle GET /blocks/tip/height\s*$`
             }
             stage.drop {
               expression = `Problem bootstrapping\. Stuck at`
             }
             stage.regex {
-              expression = `^(?P<prefix>\d+)-(?P<line>.*)$`
+              expression = `^(?P<prefix>\d+)-(?P<line>.*?)\s*$`
             }
             stage.template {
               source   = "component"
