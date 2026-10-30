@@ -70,6 +70,15 @@ spec:
     remediation:
       retries: 3
       remediateLastFailure: true
+  # The chart has no priorityClassName value (1.14.0), so it is set after rendering.
+  postRenderers:
+    - kustomize:
+        patches:
+          - target: { kind: Deployment, name: pyrra }
+            patch: |
+              - op: add
+                path: /spec/template/spec/priorityClassName
+                value: platform-critical
   values:
     prometheusUrl: http://prometheus-operated.monitoring.svc.cluster.local:9090
     # its own admission webhook would need a certificate; the CRD schema is enough

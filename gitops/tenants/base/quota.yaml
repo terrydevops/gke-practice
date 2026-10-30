@@ -33,3 +33,19 @@ spec:
       defaultRequest: # applied if a container sets no requests
         cpu: 50m
         memory: 64Mi
+---
+# A tenant pod may not claim a platform priority: with pods: 0 in this scope,
+# admission rejects any pod in the namespace that names one of these classes.
+apiVersion: v1
+kind: ResourceQuota
+metadata:
+  name: no-platform-priority
+  namespace: ${tenant_namespace}
+spec:
+  hard:
+    pods: "0"
+  scopeSelector:
+    matchExpressions:
+      - scopeName: PriorityClass
+        operator: In
+        values: [platform-critical, chain-node]

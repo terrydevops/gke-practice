@@ -70,6 +70,7 @@ spec:
         kubeProxy: false
     prometheus:
       prometheusSpec:
+        priorityClassName: platform-critical
         retention: 7d
         retentionSize: 8GB # below the volume size, so old data goes before the disk fills
         storageSpec:
@@ -89,6 +90,7 @@ spec:
         resources: { requests: { cpu: 100m, memory: 1Gi }, limits: { memory: 2Gi } } # uses about 60m
     alertmanager:
       alertmanagerSpec:
+        priorityClassName: platform-critical
         # An AlertmanagerConfig in `monitoring` (infrastructure/alerting) routes
         # alerts from every namespace; elsewhere it would match only its own.
         alertmanagerConfigMatcherStrategy:
@@ -110,8 +112,10 @@ spec:
       forceDeployDatasources: true
       forceDeployDashboards: true
     prometheusOperator:
+      priorityClassName: platform-critical
       resources: { requests: { cpu: 50m, memory: 128Mi }, limits: { memory: 256Mi } }
     kube-state-metrics:
+      priorityClassName: platform-critical
       resources: { requests: { cpu: 20m, memory: 64Mi }, limits: { memory: 128Mi } }
     prometheus-node-exporter:
       resources: { requests: { cpu: 20m, memory: 32Mi }, limits: { memory: 64Mi } }
