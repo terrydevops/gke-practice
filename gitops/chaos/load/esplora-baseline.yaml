@@ -1,0 +1,153 @@
+###
+# Baseline load test of the Bitcoin regtest Esplora API (drill 7, step 3).
+# Started by hand like the chaos experiments; nothing in Flux points here.
+#
+# k6 calls the esplora Service directly, not through the explorer, so the
+# numbers are the chain service's own. Three stages of two minutes each, with
+# 10, 50, then 100 virtual users in all, each looping over four calls with no
+# pause (a closed model: it finds the most the service answers, not a
+# realistic mix).
+#
+#   tip      /blocks/tip/height          the cheapest call
+#   blocks   /blocks                     the last ten blocks
+#   txs      /block/<hash>/txs           a block's transactions
+#   address  /address/<addr>             an address with 100 coinbase outputs
+#
+# Ten pods of at most ten users each, not one of a hundred: the image's nginx
+# allows ten connections at a time per client IP (limit_conn, 429 beyond), so
+# one pod would measure the limiter. Ten pods are ten clients. Its per-request
+# rate limit keys on X-Forwarded-For, which k6 does not send, so it is not hit.
+#
+# The address is read in setup from block 1's coinbase, so it works on any
+# fresh chain. Each pod prints one JSON line of results at the end. Run, watch
+# and clean up: gitops/chaos/README.md, "Load tests".
+###
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: load
+  labels:
+    pod-security.kubernetes.io/enforce: restricted
+---
+# esplora admits only Prometheus and the explorer; this lets the load
+# generator in, on the API port only, for as long as the test is applied.
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-load-test
+  namespace: esplora
+spec:
+  podSelector:
+    matchLabels:
+      app: esplora
+  policyTypes:
+    - Ingress
+  ingress:
+    - from:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: load
+      ports:
+        - protocol: TCP
+          port: 80
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: esplora-baseline
+  namespace: load
+data:
+  script.js: |
+    import http from "k6/http";
+    import { check } from "k6";
+
+    const API = __ENV.API || "http://esplora.esplora.svc.cluster.local/regtest/api";
+    // Per pod; ten pods run at once, so the stages are 10, 50 and 100 users in all.
+    const stages = { s010: [1, "0s"], s050: [5, "2m"], s100: [10, "4m"] };
+    const calls = ["tip", "blocks", "txs", "address"];
+
+    const scenarios = {};
+    const thresholds = {}; // none can fail: they only make k6 keep a submetric per stage and call
+    for (const [name, [vus, start]] of Object.entries(stages)) {
+      scenarios[name] = { executor: "constant-vus", vus: vus, duration: "2m", startTime: start, gracefulStop: "5s" };
+      thresholds[`http_req_duration{scenario:${name}}`] = ["p(95)>=0"];
+      thresholds[`http_reqs{scenario:${name}}`] = ["count>=0"];
+      thresholds[`http_req_failed{scenario:${name}}`] = ["rate>=0"];
+      for (const call of calls) thresholds[`http_req_duration{scenario:${name},name:${call}}`] = ["p(95)>=0"];
+    }
+
+    export const options = { scenarios: scenarios, thresholds: thresholds, summaryTrendStats: ["avg", "p(95)", "max"] };
+
+    export function setup() {
+      const tip = http.get(`${API}/blocks/tip/hash`).body;
+      const first = http.get(`${API}/block-height/1`).body;
+      const coinbase = http.get(`${API}/block/${first}/txs`).json()[0];
+      return { tip: tip, address: coinbase.vout[0].scriptpubkey_address };
+    }
+
+    export default function (data) {
+      const calls = [
+        ["tip", `${API}/blocks/tip/height`],
+        ["blocks", `${API}/blocks`],
+        ["txs", `${API}/block/${data.tip}/txs`],
+        ["address", `${API}/address/${data.address}`],
+      ];
+      for (const [name, url] of calls) {
+        check(http.get(url, { tags: { name: name } }), { "status 200": (r) => r.status === 200 });
+      }
+    }
+
+    // One JSON line per pod: requests, failures and latency (ms) per stage and per call.
+    export function handleSummary(data) {
+      const m = (key) => (data.metrics[key] || { values: {} }).values;
+      const out = { pod: __ENV.HOSTNAME };
+      for (const name of Object.keys(stages)) {
+        const d = m(`http_req_duration{scenario:${name}}`);
+        out[name] = {
+          reqs: m(`http_reqs{scenario:${name}}`).count,
+          failed: m(`http_req_failed{scenario:${name}}`).rate,
+          avg: d.avg, p95: d["p(95)"], max: d.max,
+          p95_by_call: Object.fromEntries(calls.map((c) => [c, m(`http_req_duration{scenario:${name},name:${c}}`)["p(95)"]])),
+        };
+      }
+      return { stdout: JSON.stringify(out) + "\n" };
+    }
+---
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: esplora-baseline
+  namespace: load
+spec:
+  parallelism: 10 # ten clients at once (see the header)
+  completions: 10
+  backoffLimit: 0 # a second run would be a different test
+  ttlSecondsAfterFinished: 86400 # the logs hold the result: keep them a day
+  template:
+    spec:
+      restartPolicy: Never
+      automountServiceAccountToken: false
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 12345 # the image's k6 user
+        seccompProfile: { type: RuntimeDefault }
+      containers:
+        - name: k6
+          # Fully-qualified and pinned by digest (the multi-arch index of 2.2.0, from August).
+          image: docker.io/grafana/k6:2.2.0@sha256:9bd01d6941fca969cb61bb57d2da5ee9b385fe2aa8881df3798c196564d6ace6
+          args: ["run", "--no-color", "--quiet", "/scripts/script.js"]
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop: ["ALL"]
+          resources:
+            # ten looping users per pod; no CPU limit, so the generator is not throttled
+            requests: { cpu: 50m, memory: 64Mi }
+            limits: { memory: 256Mi }
+          volumeMounts:
+            - { name: scripts, mountPath: /scripts, readOnly: true }
+      volumes:
+        - name: scripts
+          configMap:
+            name: esplora-baseline

@@ -75,6 +75,13 @@ metadata:
     app: cloudflared
 spec:
   replicas: 2
+  # Start the new pod before stopping an old one: a rollout never drops below
+  # the replica count, and the PDB is never the only thing holding it up.
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxSurge: 1
+      maxUnavailable: 0
   selector:
     matchLabels:
       app: cloudflared
