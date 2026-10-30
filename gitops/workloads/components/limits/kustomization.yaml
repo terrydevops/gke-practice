@@ -1,0 +1,9 @@
+###
+# A ceiling for each chain workload namespace (esplora, esplora-liquid), like
+# the tenants' (tenants/base/quota.yaml) but sized for a node with its index.
+# A component, so each workload's `namespace:` places its own copy.
+###
+apiVersion: kustomize.config.k8s.io/v1alpha1
+kind: Component
+resources:
+  - limits.yaml

@@ -6,6 +6,10 @@
 #
 # A StatefulSet for the disk: /data holds the chain and the electrs index and
 # must follow the pod when a Spot node is reclaimed.
+#
+# No PodDisruptionBudget: with one replica, any budget either blocks every
+# node drain or allows the eviction anyway. A drain or a Spot reclaim is a
+# short outage of this chain, until the pod is up on another node.
 ###
 apiVersion: apps/v1
 kind: StatefulSet
@@ -29,6 +33,8 @@ spec:
       labels:
         app: esplora
     spec:
+      # Below the platform, above tenant apps (flux-system/priority.yaml).
+      priorityClassName: chain-node
       # runit_boot.sh stops socat, then electrs, then bitcoind with a longer
       # wait so it flushes cleanly. The default 30 s cuts that short.
       terminationGracePeriodSeconds: 120

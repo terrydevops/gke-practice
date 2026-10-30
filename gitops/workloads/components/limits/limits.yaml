@@ -1,0 +1,25 @@
+# The primary asks for 275m / 560Mi and a 10Gi disk. The ceiling leaves room
+# for read replicas beside it, so an autoscaler gone wrong stops here rather
+# than filling the nodes. To be resized from the load test (gitops/chaos).
+apiVersion: v1
+kind: ResourceQuota
+metadata:
+  name: workload-quota
+spec:
+  hard:
+    requests.cpu: "2"
+    requests.memory: 4Gi
+    limits.memory: 8Gi
+    persistentvolumeclaims: "5"
+    requests.storage: 60Gi
+---
+# Defaults for a container that names none, so it still fits the quota.
+apiVersion: v1
+kind: LimitRange
+metadata:
+  name: workload-limits
+spec:
+  limits:
+    - type: Container
+      defaultRequest: { cpu: 10m, memory: 32Mi }
+      default: { memory: 256Mi }

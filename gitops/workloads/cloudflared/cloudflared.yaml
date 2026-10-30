@@ -6,6 +6,10 @@
 #
 # The tunnel token comes from Secret Manager (bootstrap/ci/secrets.tf), read by
 # cloudflared-secrets only, as for Grafana. Nothing can reach this namespace.
+#
+# Two replicas on different nodes: each is a connector of the same tunnel, and
+# Cloudflare sends traffic to whichever is up, so a drain or a Spot reclaim
+# leaves the explorer reachable.
 ###
 apiVersion: v1
 kind: Namespace
@@ -70,7 +74,7 @@ metadata:
   labels:
     app: cloudflared
 spec:
-  replicas: 1
+  replicas: 2
   selector:
     matchLabels:
       app: cloudflared
@@ -79,6 +83,19 @@ spec:
       labels:
         app: cloudflared
     spec:
+      # Below the platform, above tenant apps (flux-system/priority.yaml).
+      priorityClassName: chain-node
+      # Never both connectors on one node; with a single node the second waits
+      # Pending and the autoscaler adds one.
+      topologySpreadConstraints:
+        - maxSkew: 1
+          topologyKey: kubernetes.io/hostname
+          whenUnsatisfiable: DoNotSchedule
+          labelSelector:
+            matchLabels:
+              app: cloudflared
+          matchLabelKeys:
+            - pod-template-hash
       automountServiceAccountToken: false
       securityContext:
         runAsNonRoot: true
@@ -121,3 +138,40 @@ spec:
               memory: 32Mi
             limits:
               memory: 128Mi
+---
+# One connector may be evicted at a time; the other keeps the tunnel up.
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: cloudflared
+  namespace: cloudflared
+spec:
+  maxUnavailable: 1
+  selector:
+    matchLabels:
+      app: cloudflared
+---
+# Smaller than the chains' (workloads/components/limits): two connectors at
+# 10m / 32Mi, with room for a rollout.
+apiVersion: v1
+kind: ResourceQuota
+metadata:
+  name: workload-quota
+  namespace: cloudflared
+spec:
+  hard:
+    requests.cpu: 200m
+    requests.memory: 256Mi
+    limits.memory: 1Gi
+    persistentvolumeclaims: "0"
+---
+apiVersion: v1
+kind: LimitRange
+metadata:
+  name: workload-limits
+  namespace: cloudflared
+spec:
+  limits:
+    - type: Container
+      defaultRequest: { cpu: 10m, memory: 32Mi }
+      default: { memory: 128Mi }
