@@ -186,15 +186,44 @@ spec:
             stage.drop {
               expression = `Problem bootstrapping\. Stuck at`
             }
+            stage.match {
+              selector = `{job="chain-pods"} |~ "^2-"`
+              stage.static_labels {
+                values = { component = "electrs" }
+              }
+            }
+            stage.match {
+              selector = `{job="chain-pods"} |~ "^3-"`
+              stage.static_labels {
+                values = { component = "nginx" }
+              }
+            }
+            stage.match {
+              selector = `{job="chain-pods"} |~ "^4-"`
+              stage.static_labels {
+                values = { component = "node" }
+              }
+            }
+            stage.match {
+              selector = `{job="chain-pods"} |~ "^5-"`
+              stage.static_labels {
+                values = { component = "prerenderer" }
+              }
+            }
+            stage.match {
+              selector = `{job="chain-pods"} |~ "^6-"`
+              stage.static_labels {
+                values = { component = "tor" }
+              }
+            }
+            stage.match {
+              selector = `{job="chain-pods"} |~ "^8-"`
+              stage.static_labels {
+                values = { component = "websocket" }
+              }
+            }
             stage.regex {
-              expression = `^(?P<prefix>\d+)-(?P<line>.*?)\s*$`
-            }
-            stage.template {
-              source   = "component"
-              template = `{{ if eq .prefix "2" }}electrs{{ else if eq .prefix "3" }}nginx{{ else if eq .prefix "4" }}node{{ else if eq .prefix "5" }}prerenderer{{ else if eq .prefix "6" }}tor{{ else if eq .prefix "8" }}websocket{{ else }}other{{ end }}`
-            }
-            stage.labels {
-              values = { component = "" }
+              expression = `^\d+-(?P<line>.*?)\s*$`
             }
             stage.output {
               source = "line"
