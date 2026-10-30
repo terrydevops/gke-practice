@@ -18,6 +18,7 @@ kind: Kustomization
 resources: # manifests generated during bootstrap
   - gotk-components.yaml
   - gotk-sync.yaml
+  - priority.yaml # here, not in infrastructure/: the Flux controllers use it
 patches:
   - patch: |
       - op: add
@@ -63,6 +64,14 @@ patches:
                 resources:
                   requests:
                     cpu: 25m
+    target:
+      kind: Deployment
+      name: "(source-controller|kustomize-controller|helm-controller|notification-controller)"
+  # Flux is the last thing to lose when the cluster is short of room (priority.yaml).
+  - patch: |
+      - op: add
+        path: /spec/template/spec/priorityClassName
+        value: platform-critical
     target:
       kind: Deployment
       name: "(source-controller|kustomize-controller|helm-controller|notification-controller)"

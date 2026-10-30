@@ -54,6 +54,7 @@ spec:
   values:
     clusterRoleBinding:
       create: false # the chart's default binds cluster-admin
+    priorityClassName: platform-critical
     config:
       pluginsDir: /headlamp/plugins
     initContainers:

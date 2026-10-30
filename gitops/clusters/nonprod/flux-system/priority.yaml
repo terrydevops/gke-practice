@@ -1,0 +1,26 @@
+###
+# Who stays when the cluster is short of room. A pending pod with a higher
+# priority preempts lower ones; tenant pods carry none (0), so they go first.
+#
+#   platform-critical  Flux, External Secrets, monitoring, Headlamp
+#   chain-node         the chain nodes and the tunnel (gitops/workloads)
+#
+# Tenants cannot use either: see no-platform-priority in tenants/base.
+###
+apiVersion: scheduling.k8s.io/v1
+kind: PriorityClass
+metadata:
+  name: platform-critical
+value: 100000
+globalDefault: false
+preemptionPolicy: PreemptLowerPriority
+description: Flux, External Secrets, monitoring and Headlamp.
+---
+apiVersion: scheduling.k8s.io/v1
+kind: PriorityClass
+metadata:
+  name: chain-node
+value: 50000
+globalDefault: false
+preemptionPolicy: PreemptLowerPriority
+description: Chain nodes and the Cloudflare tunnel, below the platform and above tenants.

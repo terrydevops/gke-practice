@@ -43,6 +43,7 @@ spec:
       retries: 3
       remediateLastFailure: true
   values:
+    priorityClassName: platform-critical
     admin:
       existingSecret: grafana-admin
       userKey: admin-user

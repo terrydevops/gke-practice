@@ -9,3 +9,12 @@ resources:
 replicas:
   - name: whoami
     count: 2
+# Two replicas on one node are one reclaim away from zero. Staging insists on
+# separate nodes; with a single node the second pod waits and the cluster
+# autoscaler adds one. Dev keeps the soft rule: it has one replica.
+patches:
+  - target: { kind: Deployment, name: whoami }
+    patch: |
+      - op: replace
+        path: /spec/template/spec/topologySpreadConstraints/1/whenUnsatisfiable
+        value: DoNotSchedule
