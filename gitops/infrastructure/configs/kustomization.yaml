@@ -49,3 +49,15 @@ configMapGenerator:
         grafana_dashboard: "1"
       annotations:
         kustomize.toolkit.fluxcd.io/substitute: disabled
+  # Kubernetes events from Loki (controllers/logging.yaml): the counts, warnings
+  # by reason, and the event lines behind them.
+  - name: dashboard-kubernetes-events
+    namespace: monitoring
+    files:
+      - dashboards/kubernetes-events.json
+    options:
+      disableNameSuffixHash: true
+      labels:
+        grafana_dashboard: "1"
+      annotations:
+        kustomize.toolkit.fluxcd.io/substitute: disabled

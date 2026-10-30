@@ -216,6 +216,10 @@ comes from a Secret that External Secrets creates there.
   scrapes the four controllers. Alerts: `FluxObjectNotReady` (10 min), `FluxObjectStuck`,
   `FluxObjectSuspended` (info, a day), `FluxControllerDown`, `FluxReconcileErrors`. Dashboards
   "Flux Cluster Stats" and "Flux Control Plane", from fluxcd/flux2-monitoring-example.
+- **Events:** `infrastructure/controllers/logging.yaml`. Alloy watches Kubernetes events in every
+  namespace and pushes them to Loki (one pod, 5Gi, 7 days); the API server itself keeps an hour.
+  Dashboard "Kubernetes events": FailedScheduling, autoscaler scale-up decisions, BackOff, evictions,
+  node events, each with its message. Explore → Loki, `{job="loki.source.kubernetes_events"} | logfmt`.
 - **SLOs:** `infrastructure/configs/slo-whoami.yaml`. The blackbox exporter probes each whoami Service
   from inside the cluster every 15s; Pyrra turns the results into availability (99%) and latency
   (95% under 250ms) objectives over 7 days, one budget per environment, with burn-rate alerts
