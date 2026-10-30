@@ -1,6 +1,7 @@
 ###
 # What the explorer opens on top of the namespace's default-deny: :8080 to
 # cloudflared only. Everything public arrives that way, through the Worker.
+# And to the blackbox prober, for the Esplora SLOs.
 ###
 apiVersion: networking.k8s.io/v1
 kind: NetworkPolicy
@@ -17,6 +18,14 @@ spec:
         - namespaceSelector:
             matchLabels:
               kubernetes.io/metadata.name: cloudflared
+        # the blackbox exporter only, not the rest of `monitoring`
+        # (gitops/infrastructure/configs/slo-esplora.yaml)
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: monitoring
+          podSelector:
+            matchLabels:
+              app.kubernetes.io/name: prometheus-blackbox-exporter
       ports:
         - protocol: TCP
           port: 8080

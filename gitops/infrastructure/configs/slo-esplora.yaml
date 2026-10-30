@@ -1,0 +1,131 @@
+###
+# Service level objectives for the two Esplora chains, built like
+# slo-whoami.yaml.
+#
+# Esplora exports no request metrics (nginx has none; electrs' query_duration
+# times its own calls to the node), so the blackbox exporter probes the API
+# every 15s. Through the explorer, the way a browser goes: the explorer's
+# nginx and the chain's API are tested together.
+#
+# Three objectives per chain:
+#  - availability: the probe succeeded;
+#  - latency: it succeeded in under 500ms. A first value, wider than whoami's
+#    250ms for the extra hop; to be set from a day of real numbers;
+#  - freshness: the API serves the node's tip, at most one block behind
+#    (chainwatch's chain_blocks and chain_api_tip_height). An explorer that is
+#    up but shows old blocks still fails its users.
+###
+apiVersion: monitoring.coreos.com/v1
+kind: Probe
+metadata:
+  name: esplora
+  namespace: monitoring
+spec:
+  interval: 15s
+  module: http_2xx
+  prober:
+    url: blackbox-exporter.monitoring.svc:9115
+  targets:
+    staticConfig:
+      static:
+        - http://explorer.explorer-dev-app.svc:8080/regtest/api/blocks/tip/height
+        - http://explorer.explorer-dev-app.svc:8080/liquidregtest/api/blocks/tip/height
+---
+apiVersion: monitoring.coreos.com/v1
+kind: PrometheusRule
+metadata:
+  name: esplora-sli
+  namespace: monitoring
+spec:
+  groups:
+    - name: esplora-sli
+      rules:
+        # 1 when the probe succeeded under 500ms, 0 otherwise (a failed probe is not fast)
+        - record: probe_fast
+          expr: >-
+            (probe_duration_seconds{job="probe/monitoring/esplora"} < bool 0.5)
+            * probe_success{job="probe/monitoring/esplora"}
+        # 1 when the API's tip is at most one block behind the node's, 0 otherwise.
+        # chainwatch writes no tip height while the API is down: that counts as 0.
+        - record: chain_api_fresh
+          expr: >-
+            (max by (namespace) (chain_blocks) - max by (namespace) (chain_api_tip_height) <= bool 1)
+            or on (namespace) (0 * max by (namespace) (chain_api_up))
+---
+apiVersion: pyrra.dev/v1alpha1
+kind: ServiceLevelObjective
+metadata:
+  name: esplora-bitcoin-availability
+  namespace: monitoring
+spec:
+  description: the Bitcoin regtest explorer API answers a probe from inside the cluster
+  target: "99"
+  window: 7d
+  indicator:
+    bool_gauge:
+      metric: probe_success{job="probe/monitoring/esplora", instance="http://explorer.explorer-dev-app.svc:8080/regtest/api/blocks/tip/height"}
+---
+apiVersion: pyrra.dev/v1alpha1
+kind: ServiceLevelObjective
+metadata:
+  name: esplora-bitcoin-latency
+  namespace: monitoring
+spec:
+  description: the Bitcoin regtest explorer API answers a probe in under 500ms
+  target: "95"
+  window: 7d
+  indicator:
+    bool_gauge:
+      metric: probe_fast{job="probe/monitoring/esplora", instance="http://explorer.explorer-dev-app.svc:8080/regtest/api/blocks/tip/height"}
+---
+apiVersion: pyrra.dev/v1alpha1
+kind: ServiceLevelObjective
+metadata:
+  name: esplora-bitcoin-freshness
+  namespace: monitoring
+spec:
+  description: the Bitcoin regtest API serves the node's tip, at most one block behind
+  target: "99"
+  window: 7d
+  indicator:
+    bool_gauge:
+      metric: chain_api_fresh{namespace="esplora"}
+---
+apiVersion: pyrra.dev/v1alpha1
+kind: ServiceLevelObjective
+metadata:
+  name: esplora-liquid-availability
+  namespace: monitoring
+spec:
+  description: the Liquid regtest explorer API answers a probe from inside the cluster
+  target: "99"
+  window: 7d
+  indicator:
+    bool_gauge:
+      metric: probe_success{job="probe/monitoring/esplora", instance="http://explorer.explorer-dev-app.svc:8080/liquidregtest/api/blocks/tip/height"}
+---
+apiVersion: pyrra.dev/v1alpha1
+kind: ServiceLevelObjective
+metadata:
+  name: esplora-liquid-latency
+  namespace: monitoring
+spec:
+  description: the Liquid regtest explorer API answers a probe in under 500ms
+  target: "95"
+  window: 7d
+  indicator:
+    bool_gauge:
+      metric: probe_fast{job="probe/monitoring/esplora", instance="http://explorer.explorer-dev-app.svc:8080/liquidregtest/api/blocks/tip/height"}
+---
+apiVersion: pyrra.dev/v1alpha1
+kind: ServiceLevelObjective
+metadata:
+  name: esplora-liquid-freshness
+  namespace: monitoring
+spec:
+  description: the Liquid regtest API serves the node's tip, at most one block behind
+  target: "99"
+  window: 7d
+  indicator:
+    bool_gauge:
+      metric: chain_api_fresh{namespace="esplora-liquid"}
