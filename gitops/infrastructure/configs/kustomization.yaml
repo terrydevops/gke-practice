@@ -5,6 +5,7 @@ resources:
   - tenant-guard.yaml
   - alerts.yaml
   - flux-commit-status.yaml
+  - flux-monitoring.yaml
   - slo-whoami.yaml
   - grafana-secret.yaml
   - grafana.yaml
@@ -17,6 +18,29 @@ configMapGenerator:
     namespace: monitoring
     files:
       - dashboards/esplora-chains.json
+    options:
+      disableNameSuffixHash: true
+      labels:
+        grafana_dashboard: "1"
+      annotations:
+        kustomize.toolkit.fluxcd.io/substitute: disabled
+  # Flux Cluster Stats and Flux Control Plane, as published in
+  # fluxcd/flux2-monitoring-example (Apache-2.0), unchanged. They read the
+  # metrics set up in flux-monitoring.yaml.
+  - name: dashboard-flux-cluster
+    namespace: monitoring
+    files:
+      - dashboards/flux-cluster.json
+    options:
+      disableNameSuffixHash: true
+      labels:
+        grafana_dashboard: "1"
+      annotations:
+        kustomize.toolkit.fluxcd.io/substitute: disabled
+  - name: dashboard-flux-control-plane
+    namespace: monitoring
+    files:
+      - dashboards/flux-control-plane.json
     options:
       disableNameSuffixHash: true
       labels:

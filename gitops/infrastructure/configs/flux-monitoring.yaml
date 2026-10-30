@@ -1,0 +1,81 @@
+###
+# Flux watched like any other workload. Flux has no UI and says nothing when a
+# Kustomization fails: on 2026-10-29 one unset ${datasource} failed infra-configs
+# and held up every layer after it for about ten minutes, and only a look at
+# the cluster showed it. These alerts would have.
+#
+# Two sources, as in fluxcd/flux2-monitoring-example:
+#   - the objects: gotk_resource_info from kube-state-metrics (its
+#     customResourceState in controllers/kube-prometheus-stack.yaml), one series
+#     per Kustomization, HelmRelease and source, with Ready as a label. One rule
+#     covers them all, whichever controller owns them.
+#   - the controllers: all four are controller-runtime and serve the same
+#     metrics on :8080 (port http-prom). One PodMonitor scrapes them; Flux's own
+#     allow-scraping NetworkPolicy already admits port 8080 from any namespace.
+#
+# The commit status on GitHub (flux-commit-status.yaml) is the third signal.
+###
+apiVersion: monitoring.coreos.com/v1
+kind: PodMonitor
+metadata:
+  name: flux-system
+  namespace: flux-system
+spec:
+  selector:
+    matchExpressions:
+      - key: app
+        operator: In
+        values: [source-controller, kustomize-controller, helm-controller, notification-controller]
+  podMetricsEndpoints:
+    - port: http-prom
+---
+apiVersion: monitoring.coreos.com/v1
+kind: PrometheusRule
+metadata:
+  name: flux
+  namespace: monitoring
+  annotations:
+    # infra-configs substitutes variables; $labels below is Prometheus's, not Flux's
+    kustomize.toolkit.fluxcd.io/substitute: disabled
+spec:
+  groups:
+    - name: flux
+      rules:
+        # The objects. A failed dependency shows as Ready=False too
+        # ("dependency ... is not ready"), so a blocked chain fires once per layer.
+        - alert: FluxObjectNotReady
+          expr: max by (customresource_kind, exported_namespace, name) (gotk_resource_info{ready="False", suspended!="true"}) == 1
+          for: 10m
+          labels: { severity: warning }
+          annotations:
+            summary: "Flux {{ $labels.customresource_kind }} {{ $labels.exported_namespace }}/{{ $labels.name }} is not ready"
+            description: "flux get all -A, then flux events --for {{ $labels.customresource_kind }}/{{ $labels.name }} -n {{ $labels.exported_namespace }}"
+        - alert: FluxObjectStuck
+          # Unknown: reconciling and never finishing, e.g. a wait on a pod that never gets ready
+          expr: max by (customresource_kind, exported_namespace, name) (gotk_resource_info{ready="Unknown", suspended!="true"}) == 1
+          for: 30m
+          labels: { severity: warning }
+          annotations:
+            summary: "Flux {{ $labels.customresource_kind }} {{ $labels.exported_namespace }}/{{ $labels.name }} has been reconciling for 30 minutes"
+        - alert: FluxObjectSuspended
+          # A drill suspends a Kustomization; this catches the one nobody resumed.
+          # Info only: it stays out of ntfy (alerting/ntfy.yaml routes warning and critical).
+          expr: max by (customresource_kind, exported_namespace, name) (gotk_resource_info{suspended="true"}) == 1
+          for: 24h
+          labels: { severity: info }
+          annotations:
+            summary: "Flux {{ $labels.customresource_kind }} {{ $labels.exported_namespace }}/{{ $labels.name }} has been suspended for a day"
+        # The controllers
+        - alert: FluxControllerDown
+          expr: kube_deployment_status_replicas_available{namespace="flux-system"} < 1
+          for: 5m
+          labels: { severity: critical }
+          annotations:
+            summary: "Flux {{ $labels.deployment }} has no running replica: nothing it owns is reconciled"
+        - alert: FluxReconcileErrors
+          # Catches failures that clear before FluxObjectNotReady's 10 minutes, again and again
+          expr: sum by (pod, controller) (rate(controller_runtime_reconcile_errors_total{namespace="flux-system"}[10m])) > 0
+          for: 15m
+          labels: { severity: warning }
+          annotations:
+            summary: "Flux {{ $labels.controller }} has been failing reconciles for 15 minutes"

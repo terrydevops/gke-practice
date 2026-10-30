@@ -211,6 +211,11 @@ comes from a Secret that External Secrets creates there.
   (Dataplane V2 has none). Their rules are off too, so `Watchdog` is the only alert that fires on a
   healthy cluster.
 - **Our alerts:** `infrastructure/configs/alerts.yaml`. No receiver yet; look in Alertmanager.
+- **Flux itself:** `infrastructure/configs/flux-monitoring.yaml`. kube-state-metrics exports every
+  Kustomization, HelmRelease and source as `gotk_resource_info` with its Ready status; one PodMonitor
+  scrapes the four controllers. Alerts: `FluxObjectNotReady` (10 min), `FluxObjectStuck`,
+  `FluxObjectSuspended` (info, a day), `FluxControllerDown`, `FluxReconcileErrors`. Dashboards
+  "Flux Cluster Stats" and "Flux Control Plane", from fluxcd/flux2-monitoring-example.
 - **SLOs:** `infrastructure/configs/slo-whoami.yaml`. The blackbox exporter probes each whoami Service
   from inside the cluster every 15s; Pyrra turns the results into availability (99%) and latency
   (95% under 250ms) objectives over 7 days, one budget per environment, with burn-rate alerts
