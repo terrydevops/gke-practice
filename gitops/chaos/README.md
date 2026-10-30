@@ -36,3 +36,18 @@ kubectl delete -f gitops/chaos/network-delay.yaml
 ```
 
 Before a teardown, check that none is left: `kubectl get podchaos,networkchaos,stresschaos -A`.
+
+## Load tests
+
+`load/` holds k6 load tests, also run by hand. They make nodes busy and can add one, so not during a
+demo.
+
+```bash
+kubectl apply -f gitops/chaos/load/esplora-baseline.yaml
+kubectl -n load get pods -w                                      # ten pods, about six minutes
+kubectl -n load logs -l job-name=esplora-baseline --tail=1        # one JSON line per pod
+kubectl delete -f gitops/chaos/load/esplora-baseline.yaml         # also removes the esplora NetworkPolicy
+```
+
+While it runs, watch esplora-0's CPU per container (`kubectl -n esplora top pod --containers`), the
+"Esplora chains" dashboard and the `esplora-bitcoin-*` objectives in Pyrra.
