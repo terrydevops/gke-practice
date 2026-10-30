@@ -7,6 +7,7 @@ resources:
   - flux-commit-status.yaml
   - flux-monitoring.yaml
   - slo-whoami.yaml
+  - slo-esplora.yaml
   - grafana-secret.yaml
   - grafana.yaml
 # Dashboards: Grafana's sidecar loads ConfigMaps labelled grafana_dashboard=1,
