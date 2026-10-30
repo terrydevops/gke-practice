@@ -1,0 +1,146 @@
+###
+# Kubernetes events, kept and searchable in Grafana.
+#
+# An event says why: "0/3 nodes are available: 1 Insufficient cpu",
+# "pod didn't trigger scale-up: max node group size reached", "Back-off
+# pulling image". Prometheus sees the result (a pod Pending, a node gone), not
+# the reason, and the API server keeps events for one hour only.
+#
+#   Alloy (one replica) : watches events in every namespace
+#                         (loki.source.kubernetes_events) and pushes them to Loki
+#   Loki (monolithic)   : one pod, filesystem on a 5Gi PD, 7 days
+#
+# Events only: no container logs, so no DaemonSet and little volume. GKE also
+# sends events to Cloud Logging; this copy is the one that works the same way
+# on EKS. The datasource and dashboard are in infrastructure/configs.
+###
+apiVersion: source.toolkit.fluxcd.io/v1
+kind: OCIRepository
+metadata:
+  name: loki
+  namespace: flux-system
+spec:
+  interval: 12h
+  url: oci://ghcr.io/grafana-community/helm-charts/loki # the open-source chart; grafana/loki is now GEL's
+  ref:
+    tag: "20.1.0" # Loki 3.7.9; pinned
+  layerSelector:
+    mediaType: application/vnd.cncf.helm.chart.content.v1.tar+gzip
+    operation: copy
+---
+apiVersion: helm.toolkit.fluxcd.io/v2
+kind: HelmRelease
+metadata:
+  name: loki
+  namespace: flux-system
+spec:
+  interval: 1h
+  timeout: 10m
+  serviceAccountName: helm-controller
+  targetNamespace: monitoring
+  releaseName: loki
+  chartRef:
+    kind: OCIRepository
+    name: loki
+  install:
+    remediation:
+      retries: 3
+  upgrade:
+    remediation:
+      retries: 3
+      remediateLastFailure: true
+  values:
+    deploymentMode: Monolithic
+    loki:
+      auth_enabled: false # one tenant; nothing outside the cluster reaches it
+      commonConfig:
+        replication_factor: 1
+      storage:
+        type: filesystem
+      schemaConfig:
+        configs:
+          - from: "2026-10-30"
+            store: tsdb
+            object_store: filesystem
+            schema: v13
+            index: { prefix: index_, period: 24h }
+      limits_config:
+        retention_period: 168h
+      compactor:
+        retention_enabled: true # without it, retention_period deletes nothing
+        delete_request_store: filesystem
+      pattern_ingester: { enabled: false }
+    singleBinary:
+      replicas: 1
+      priorityClassName: platform-critical
+      persistence:
+        size: 5Gi
+        storageClass: standard-rwo
+        enableStatefulSetAutoDeletePVC: true # the disk goes with the release
+      resources: { requests: { cpu: 50m, memory: 256Mi }, limits: { memory: 512Mi } }
+    sidecar:
+      rules: { enabled: false } # no Loki rules yet; drops a cluster-wide ConfigMap watch
+    read: { replicas: 0 }
+    write: { replicas: 0 }
+    backend: { replicas: 0 }
+    gateway: { enabled: false } # Grafana talks to loki:3100 directly
+    chunksCache: { enabled: false }
+    resultsCache: { enabled: false }
+    lokiCanary: { enabled: false }
+    test: { enabled: false }
+---
+apiVersion: source.toolkit.fluxcd.io/v1
+kind: HelmRepository
+metadata:
+  name: grafana
+  namespace: flux-system
+spec:
+  interval: 12h
+  url: https://grafana.github.io/helm-charts
+---
+apiVersion: helm.toolkit.fluxcd.io/v2
+kind: HelmRelease
+metadata:
+  name: alloy
+  namespace: flux-system
+spec:
+  interval: 1h
+  timeout: 5m
+  serviceAccountName: helm-controller
+  targetNamespace: monitoring
+  releaseName: alloy
+  dependsOn:
+    - name: loki
+  chart:
+    spec:
+      chart: alloy
+      version: "1.15.0" # Alloy v1.21.3; pinned
+      sourceRef:
+        kind: HelmRepository
+        name: grafana
+  install:
+    remediation:
+      retries: 3
+  upgrade:
+    remediation:
+      retries: 3
+      remediateLastFailure: true
+  values:
+    controller:
+      # One replica: two would each send every event. A restart re-sends the
+      # last hour's events; Loki keeps both copies, which is harmless here.
+      type: deployment
+      replicas: 1
+      priorityClassName: platform-critical
+    alloy:
+      configMap:
+        content: |
+          loki.source.kubernetes_events "cluster" {
+            forward_to = [loki.write.local.receiver]
+          }
+          loki.write "local" {
+            endpoint {
+              url = "http://loki.monitoring.svc.cluster.local:3100/loki/api/v1/push"
+            }
+          }
+      resources: { requests: { cpu: 20m, memory: 64Mi }, limits: { memory: 256Mi } }

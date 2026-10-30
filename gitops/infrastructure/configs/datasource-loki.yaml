@@ -1,0 +1,24 @@
+###
+# Loki as a Grafana datasource (events from controllers/logging.yaml). Grafana's
+# sidecar loads ConfigMaps labelled grafana_datasource=1 from monitoring; the
+# Prometheus datasource comes the same way, from kube-prometheus-stack.
+# The uid is fixed so dashboards can name it.
+###
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: datasource-loki
+  namespace: monitoring
+  labels:
+    grafana_datasource: "1"
+data:
+  loki.yaml: |
+    apiVersion: 1
+    datasources:
+      - name: Loki
+        uid: loki
+        type: loki
+        access: proxy
+        url: http://loki.monitoring.svc.cluster.local:3100
+        jsonData:
+          maxLines: 1000

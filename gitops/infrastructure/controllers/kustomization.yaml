@@ -9,3 +9,4 @@ resources:
   - pyrra.yaml
   - chaos-mesh.yaml
   - headlamp.yaml
+  - logging.yaml
