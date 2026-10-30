@@ -1,0 +1,10 @@
+# One replica may be evicted at a time (drain, autoscaler scale-down).
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: explorer
+spec:
+  maxUnavailable: 1
+  selector:
+    matchLabels:
+      app: explorer

@@ -4,6 +4,8 @@
 # validatepegin=0 and initialfreecoins, so it needs no bitcoind and no peers.
 # No federation either: one node signs every block, so peg-ins, peg-outs and
 # functionaries cannot be practised here.
+#
+# No PodDisruptionBudget, for the same reason as gitops/workloads/esplora.
 ###
 apiVersion: apps/v1
 kind: StatefulSet
@@ -27,6 +29,8 @@ spec:
       labels:
         app: esplora
     spec:
+      # Below the platform, above tenant apps (flux-system/priority.yaml).
+      priorityClassName: chain-node
       # runit_boot.sh stops socat, then electrs, then bitcoind with a longer
       # wait so it flushes cleanly. The default 30 s cuts that short.
       terminationGracePeriodSeconds: 120

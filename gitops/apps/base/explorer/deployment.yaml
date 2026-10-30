@@ -5,6 +5,9 @@
 # an emptyDir, and an
 # unprivileged nginx serves it. Both run as non-root, so the tenant's
 # "restricted" namespace admits them.
+#
+# Two replicas on different nodes, with a PDB (pdb.yaml): a drain or a Spot
+# reclaim takes one, the other keeps serving.
 ###
 apiVersion: apps/v1
 kind: Deployment
@@ -13,7 +16,7 @@ metadata:
   labels:
     app: explorer
 spec:
-  replicas: 1
+  replicas: 2
   selector:
     matchLabels:
       app: explorer
@@ -22,6 +25,17 @@ spec:
       labels:
         app: explorer
     spec:
+      # Never both replicas on one node; with a single node the second waits
+      # Pending and the autoscaler adds one.
+      topologySpreadConstraints:
+        - maxSkew: 1
+          topologyKey: kubernetes.io/hostname
+          whenUnsatisfiable: DoNotSchedule
+          labelSelector:
+            matchLabels:
+              app: explorer
+          matchLabelKeys:
+            - pod-template-hash
       automountServiceAccountToken: false
       securityContext:
         runAsNonRoot: true

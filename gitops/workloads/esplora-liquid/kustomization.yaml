@@ -3,6 +3,7 @@ kind: Kustomization
 namespace: esplora-liquid # also places the generated chainwatch ConfigMap
 components:
   - ../components/chainwatch # chain metrics and a block producer
+  - ../components/limits # quota and container defaults
 resources:
   - namespace.yaml
   - networkpolicy.yaml
