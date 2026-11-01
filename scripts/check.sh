@@ -5,18 +5,23 @@
 # passes or TIMEOUT seconds go by (default 1200: a fresh cluster needs about
 # fifteen minutes), then prints one PASS / FAIL line per check.
 #
-#   CONTEXT   kubectl context (default: the one scripts/up.sh writes)
+#   CONTEXT   kubectl context; without it, the one scripts/up.sh writes,
+#             found through the gcloud configuration
 #   TIMEOUT   seconds to wait
+#
+# In GitHub Actions the result also goes to the job summary.
 #
 # Left out on purpose: drill-flux-alert, the Kustomization that a drill keeps
 # broken.
 ###
 set -uo pipefail
 
-: "${CLOUDSDK_ACTIVE_CONFIG_NAME:?set the gcloud configuration to use}"
-project=$(gcloud config get project 2>/dev/null)
-location=$(gcloud container clusters list --filter="name=gke-practice-nonprod" --format='value(location)')
-CONTEXT=${CONTEXT:-gke_${project}_${location}_gke-practice-nonprod}
+if [ -z "${CONTEXT:-}" ]; then
+  : "${CLOUDSDK_ACTIVE_CONFIG_NAME:?set CONTEXT, or the gcloud configuration to use}"
+  project=$(gcloud config get project 2>/dev/null)
+  location=$(gcloud container clusters list --filter="name=gke-practice-nonprod" --format='value(location)')
+  CONTEXT=gke_${project}_${location}_gke-practice-nonprod
+fi
 TIMEOUT=${TIMEOUT:-1200}
 k() { kubectl --context "$CONTEXT" "$@"; }
 
@@ -88,12 +93,18 @@ while :; do
 done
 
 rc=0
+summary="| Check | Result |"$'\n'"|---|---|"
 for c in "${checks[@]}"; do
   out=$("check_$c" 2>&1)
   if [ -z "$out" ]; then
     printf 'PASS  %s\n' "$c"
+    summary+=$'\n'"| $c | PASS |"
   else
     printf 'FAIL  %s\n' "$c"; printf '      %s\n' "${out//$'\n'/$'\n'      }"; rc=1
+    summary+=$'\n'"| $c | FAIL: ${out//$'\n'/, } |"
   fi
 done
+if [ -n "${GITHUB_STEP_SUMMARY:-}" ]; then
+  printf '### Environment check\n\n%s\n' "$summary" >>"$GITHUB_STEP_SUMMARY"
+fi
 exit "$rc"

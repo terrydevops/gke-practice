@@ -11,6 +11,8 @@
 #              Google only lets a token for refs/heads/main impersonate that
 #              account (bootstrap/ci), so the `if` below is a convenience; the
 #              gate is in IAM, where a workflow file cannot change it.
+#   bootstrap: after an apply, the same account installs Flux
+#              (scripts/ci-bootstrap.sh) and waits until scripts/check.sh passes.
 #   destroy  : the same account and gate. Run workflow with action=destroy and
 #              the cluster name in `confirm`. Removes everything in envs/nonprod,
 #              then the disks the cluster's PersistentVolumes left behind;
@@ -195,6 +197,52 @@ jobs:
           name: tfplan
           path: ${{ env.TF_DIR }}
       - run: terraform -chdir="$TF_DIR" apply -input=false tfplan
+
+  # Installs Flux on the cluster the apply just made, then waits until the whole
+  # environment is up: a green run means it can be used. No GitHub token: the
+  # deploy key is in Secret Manager (bootstrap/ci), the manifests are in git.
+  # Harmless on a cluster that already runs Flux; every step converges.
+  bootstrap:
+    needs: apply
+    runs-on: ubuntu-24.04
+    timeout-minutes: 40
+    concurrency:
+      group: terraform-apply
+      cancel-in-progress: false
+    permissions:
+      contents: read
+      id-token: write
+    env:
+      TF_VAR_project_id: ${{ secrets.TF_VAR_PROJECT_ID }}
+      TF_VAR_region: ${{ secrets.TF_VAR_REGION }}
+      CLUSTER_USERS: ${{ secrets.TF_VAR_CLUSTER_USERS }}
+      CLUSTER_VARS: ${{ secrets.CLUSTER_VARS }} # scripts/cluster-vars.env.example
+    steps:
+      - *mask_users
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: google-github-actions/auth@7c6bc770dae815cd3e89ee6cdf493a5fab2cc093 # v3.0.0
+        with:
+          workload_identity_provider: ${{ secrets.WIF_PROVIDER }}
+          service_account: ${{ secrets.APPLY_SA }}
+      # A kubeconfig with a short-lived token for the DNS endpoint; no auth
+      # plugin needed on the runner.
+      - uses: google-github-actions/get-gke-credentials@3da1e46a907576cefaa90c484278bb5b259dd395 # v3.0.0
+        with:
+          cluster_name: gke-practice-nonprod
+          location: ${{ secrets.TF_VAR_ZONE }}
+          project_id: ${{ secrets.TF_VAR_PROJECT_ID }}
+          use_dns_based_endpoint: true
+          context_name: gke-practice
+      - name: Install Flux
+        env:
+          CONTEXT: gke-practice
+        run: PROJECT="$TF_VAR_project_id" REGION="$TF_VAR_region" scripts/ci-bootstrap.sh
+      - name: Wait until everything is up
+        env:
+          CONTEXT: gke-practice
+        run: scripts/check.sh
 
   # Plans the destroy and applies exactly that plan. The cluster name in
   # `confirm` guards against a misclick; it reaches the shell through env, so

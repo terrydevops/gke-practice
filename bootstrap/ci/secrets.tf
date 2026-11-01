@@ -3,9 +3,10 @@
 # read it, never a version: the value is added by hand (gitops/README.md,
 # "Monitoring" and "Commit status"), so it is in neither git nor state.
 #
-# Read through Workload Identity Federation by one Kubernetes service account,
-# named here: no Google service account in between. The binding does not need
-# the cluster to exist, so it survives a teardown.
+# Each is read through Workload Identity Federation by one Kubernetes service
+# account, named here: no Google service account in between. The binding does
+# not need the cluster to exist, so it survives a teardown. The exception is
+# the deploy key at the end, which only CI reads.
 ###
 data "google_project" "this" {
   project_id = var.project_id
@@ -79,4 +80,22 @@ resource "google_secret_manager_secret_iam_member" "alertmanager_ntfy" {
   secret_id = google_secret_manager_secret.alertmanager_ntfy.secret_id
   role      = "roles/secretmanager.secretAccessor"
   member    = "${local.ksa_principal}/ns/monitoring/sa/alertmanager-secrets"
+}
+
+# Private half of Flux's read-only deploy key on this repository. The CI
+# bootstrap job (scripts/ci-bootstrap.sh) puts it into the cluster after every
+# apply, so no GitHub token is needed to rebuild. Read by the apply account
+# only: nothing in the cluster reaches it.
+resource "google_secret_manager_secret" "flux_deploy_key" {
+  secret_id = "flux-deploy-key"
+  replication {
+    auto {}
+  }
+  depends_on = [google_project_service.this]
+}
+
+resource "google_secret_manager_secret_iam_member" "flux_deploy_key" {
+  secret_id = google_secret_manager_secret.flux_deploy_key.secret_id
+  role      = "roles/secretmanager.secretAccessor"
+  member    = "serviceAccount:${google_service_account.apply.email}"
 }
