@@ -1,7 +1,7 @@
 ###
 # Pyrra: turns ServiceLevelObjective objects into Prometheus recording rules
 # and multi-window burn-rate alerts, and serves a UI on top of them. The
-# objectives themselves are in infrastructure/configs/slo-whoami.yaml.
+# objectives themselves are in infrastructure/slo/slo-whoami.yaml.
 #
 # The CRD is its own chart, installed first. It adds no aggregation labels, so
 # tenants (who hold `admin` in their namespace) get no rights on objectives.

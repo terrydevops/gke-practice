@@ -1,6 +1,6 @@
 ###
 # Blackbox exporter: probes whoami from inside the cluster, so the SLOs in
-# infrastructure/configs/slo-whoami.yaml need no public route. Its default
+# infrastructure/slo/slo-whoami.yaml need no public route. Its default
 # `http_2xx` module is all they use.
 #
 # The tenant lets it in: whoami's own NetworkPolicy admits this pod by label,

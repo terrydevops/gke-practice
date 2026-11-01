@@ -18,7 +18,7 @@ spec:
     - from:
         - podSelector: {} # any pod in the SAME namespace
         # the blackbox exporter only, not the rest of `monitoring`
-        # (gitops/infrastructure/configs/slo-whoami.yaml)
+        # (gitops/infrastructure/slo/slo-whoami.yaml)
         - namespaceSelector:
             matchLabels:
               kubernetes.io/metadata.name: monitoring

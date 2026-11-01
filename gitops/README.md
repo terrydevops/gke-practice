@@ -224,11 +224,15 @@ comes from a Secret that External Secrets creates there.
   server, labelled by process from svlogd's prefix: `{job="chain-pods", namespace="esplora-liquid",
   component="node"}` (also `electrs`, `tor`, `nginx`, ...). Tip-height poll lines and tor bootstrap
   retries are dropped. A logs row at the bottom of "Esplora chains".
-- **SLOs:** `infrastructure/configs/slo-whoami.yaml`. The blackbox exporter probes each whoami Service
+- **SLOs:** `infrastructure/slo/slo-whoami.yaml`. The blackbox exporter probes each whoami Service
   from inside the cluster every 15s; Pyrra turns the results into availability (99%) and latency
   (95% under 250ms) objectives over 7 days, one budget per environment, with burn-rate alerts
   (`ErrorBudgetBurn`). See them in the Pyrra UI or the "Pyrra" dashboards in Grafana. A tenant is
   probed only if its NetworkPolicy lets the prober in (`apps/base/whoami/networkpolicy.yaml`).
+  The Flux Kustomization `infra-slo` applies them only after the probed apps are Ready, so a
+  rebuild does not start with a burnt budget. While one of those apps is down, `infra-slo` reports
+  "dependency not ready" and holds back changes to the SLO files; the probes already running keep
+  recording.
 - **Storage:** Prometheus 10Gi (7 days), Alertmanager 1Gi. Both disks are deleted with the release.
 
 ## UI

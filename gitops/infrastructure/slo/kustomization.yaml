@@ -1,0 +1,7 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+# Probes and objectives. Applied by the Flux Kustomization infra-slo, which
+# waits until every probed app is Ready (clusters/nonprod/infrastructure.yaml).
+resources:
+  - slo-whoami.yaml
+  - slo-esplora.yaml
