@@ -44,7 +44,12 @@ variable "egress_tcp_ports" {
 }
 
 variable "flow_log_sampling" {
-  description = "Share of flows written to VPC Flow Logs (0.0 - 1.0). Higher is better for forensics and costs more."
+  description = "Share of flows written to VPC Flow Logs (0.0 - 1.0); 0 turns them off. Higher is better for forensics and costs more."
   type        = number
   default     = 0.1
+
+  validation {
+    condition     = var.flow_log_sampling >= 0 && var.flow_log_sampling <= 1
+    error_message = "flow_log_sampling is a share between 0 and 1."
+  }
 }

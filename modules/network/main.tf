@@ -45,12 +45,15 @@ resource "google_compute_subnetwork" "nodes" {
     ip_cidr_range = var.services_cidr
   }
 
-  # VPC Flow Logs: who talked to whom. Needed after an incident; sampled to
-  # keep the bill sane.
-  log_config {
-    aggregation_interval = "INTERVAL_5_SEC"
-    flow_sampling        = var.flow_log_sampling
-    metadata             = "INCLUDE_ALL_METADATA"
+  # VPC Flow Logs: who talked to whom. Off when the sampling is 0; set a share
+  # to turn them on during an incident.
+  dynamic "log_config" {
+    for_each = var.flow_log_sampling > 0 ? [1] : []
+    content {
+      aggregation_interval = "INTERVAL_5_SEC"
+      flow_sampling        = var.flow_log_sampling
+      metadata             = "INCLUDE_ALL_METADATA"
+    }
   }
 }
 

@@ -164,6 +164,36 @@ resource "google_project_iam_member" "apply" {
   member  = "serviceAccount:${google_service_account.apply.email}"
 }
 
+# A destroyed cluster leaves its PersistentVolume disks behind, billing on. The
+# destroy job deletes them; this lets it delete disks named pvc-* and nothing
+# else. In bootstrap/, like cluster_connect, so the role ID survives teardowns.
+resource "google_project_iam_custom_role" "volume_cleanup" {
+  role_id     = "gkeVolumeCleanup"
+  title       = "GKE volume cleanup"
+  description = "Delete a destroyed cluster's PersistentVolume disks."
+
+  permissions = [
+    "compute.disks.delete",
+    "compute.disks.get",
+    "compute.disks.list",
+    "compute.zoneOperations.get",
+  ]
+
+  depends_on = [google_project_service.this] # needs the IAM API
+}
+
+resource "google_project_iam_member" "apply_volume_cleanup" {
+  project = var.project_id
+  role    = google_project_iam_custom_role.volume_cleanup.id
+  member  = "serviceAccount:${google_service_account.apply.email}"
+
+  # Listing is checked on the project, everything else on the disk itself.
+  condition {
+    title      = "pvc-disks-only"
+    expression = "resource.type != 'compute.googleapis.com/Disk' || resource.name.extract('/disks/{name}').startsWith('pvc-')"
+  }
+}
+
 ###
 # State bucket (from bootstrap/state). plan runs with -lock=false, so reading
 # objects is enough; apply writes state and the lock object.

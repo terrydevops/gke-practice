@@ -12,7 +12,8 @@
 #              account (bootstrap/ci), so the `if` below is a convenience; the
 #              gate is in IAM, where a workflow file cannot change it.
 #   destroy  : the same account and gate. Run workflow with action=destroy and
-#              the cluster name in `confirm`. Removes everything in envs/nonprod;
+#              the cluster name in `confirm`. Removes everything in envs/nonprod,
+#              then the disks the cluster's PersistentVolumes left behind;
 #              bootstrap/ (state bucket, CI identity, cluster access) stays.
 #
 # Terraform here never talks to the Kubernetes API (no helm / kubernetes
@@ -237,3 +238,24 @@ jobs:
       - name: Destroy plan to the job summary
         run: .github/scripts/plan-summary.sh "$TF_DIR" destroy.tfplan "Destroy plan of $TF_DIR"
       - run: terraform -chdir="$TF_DIR" apply -input=false destroy.tfplan
+      # The cluster is gone, the disks behind its PersistentVolumes are not: GKE
+      # labels them with the cluster's name, and they would bill on. The apply
+      # account may delete pvc-* disks only (bootstrap/ci, volume_cleanup). The
+      # runner image ships gcloud; the auth step above already set its credentials.
+      - name: Delete the cluster's leftover volumes
+        env:
+          CLUSTER: gke-practice-nonprod
+        run: |
+          set -euo pipefail
+          filter="labels.goog-k8s-cluster-name=$CLUSTER AND labels.goog-gke-volume:* AND -users:*"
+          gcloud compute disks list --project "$TF_VAR_project_id" --filter="$filter" \
+            --format='value(name,zone.basename())' |
+          while read -r name zone; do
+            echo "deleting $name ($zone)"
+            gcloud compute disks delete "$name" --zone "$zone" --project "$TF_VAR_project_id" --quiet
+          done
+          left=$(gcloud compute disks list --project "$TF_VAR_project_id" \
+            --filter="labels.goog-k8s-cluster-name=$CLUSTER" --format='value(name)')
+          if [ -n "$left" ]; then
+            echo "::error::disks of $CLUSTER still there: $left"; exit 1
+          fi
