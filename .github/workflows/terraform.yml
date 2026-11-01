@@ -247,7 +247,9 @@ jobs:
           CLUSTER: gke-practice-nonprod
         run: |
           set -euo pipefail
-          filter="labels.goog-k8s-cluster-name=$CLUSTER AND labels.goog-gke-volume:* AND -users:*"
+          # Not labels.goog-gke-volume:* - that label's value is empty, and ":*"
+          # matches no empty value (seen on the first run).
+          filter="labels.goog-k8s-cluster-name=$CLUSTER AND name~^pvc- AND -users:*"
           gcloud compute disks list --project "$TF_VAR_project_id" --filter="$filter" \
             --format='value(name,zone.basename())' |
           while read -r name zone; do
