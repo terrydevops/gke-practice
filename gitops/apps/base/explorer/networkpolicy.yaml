@@ -19,7 +19,7 @@ spec:
             matchLabels:
               kubernetes.io/metadata.name: cloudflared
         # the blackbox exporter only, not the rest of `monitoring`
-        # (gitops/infrastructure/configs/slo-esplora.yaml)
+        # (gitops/infrastructure/slo/slo-esplora.yaml)
         - namespaceSelector:
             matchLabels:
               kubernetes.io/metadata.name: monitoring
