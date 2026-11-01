@@ -133,46 +133,45 @@ is created once, from Terraform outputs.
 
 ## Bootstrap
 
-Needs a cluster, and a user who is project owner (cluster-admin through IAM) for this one step.
-`scripts/up.sh` runs the three steps below as one command (see "Tear down and rebuild").
-No gcloud configuration is active by default, so the account is named explicitly.
+The `bootstrap` job of `terraform.yml` runs after every apply: it installs Flux, then waits until
+`scripts/check.sh` passes. No GitHub token is involved; `scripts/ci-bootstrap.sh` does inside the
+cluster what `flux bootstrap github` would, from what is already in git:
+
+1. **ConfigMap `cluster-vars`**, the values Flux substitutes: from the repository secret
+   `CLUSTER_VARS` (lines as in `scripts/cluster-vars.env.example`), plus the proxy-only range read from
+   the subnet. Optional `CLUSTER_VIEWER_1..3` are read-only people (see "UI"); an unset slot binds
+   nobody.
+2. **Secret `flux-system`**: the private half of Flux's read-only deploy key, from Secret Manager
+   (`flux-deploy-key`, read by the apply account only), and GitHub's SSH host keys, taken over HTTPS
+   from `api.github.com/meta`. The sync uses `ssh://git@ssh.github.com:443/...`, because the VPC
+   firewall only lets nodes reach the outside on TCP 443.
+3. **`clusters/nonprod/flux-system/`**: the controllers (`gotk-components.yaml`), our lockdown
+   patches (`kustomization.yaml`) and the sync (`gotk-sync.yaml`).
+
+From a laptop, for when the job cannot run: `scripts/up.sh` writes the kubeconfig entry (through the
+DNS endpoint, pinned to the gcloud account) and runs the same script with the values from the
+gitignored `scripts/cluster-vars.env`.
 
 ```bash
-export CLOUDSDK_ACTIVE_CONFIG_NAME=<gcloud configuration>   # this shell only
-export GOOGLE_OAUTH_ACCESS_TOKEN=$(gcloud auth print-access-token)   # for terraform output
-
-# 1. kubeconfig through the DNS endpoint, then pin it to the account: the auth
-#    plugin otherwise follows whichever configuration is active, and its token
-#    cache, which can hold another account's token.
-$(terraform -chdir=envs/nonprod output -raw get_credentials)
-kubectl config set-credentials "$(kubectl config view --minify -o jsonpath='{.users[0].name}')" \
-  --exec-arg="--account=$(gcloud config get account)"
-
-# 2. the values Flux substitutes, before anything reconciles
-kubectl create namespace flux-system
-kubectl -n flux-system create configmap cluster-vars \
-  --from-literal=cluster_admin="<google account e-mail>" \
-  --from-literal=proxy_only_cidr="$(terraform -chdir=envs/nonprod output -raw proxy_only_cidr)"
-#    optional: cluster_viewer_1..3, read-only people (see "UI"); an unset slot binds nobody
-
-# 3. Flux installs itself, fills in the two gotk-*.yaml files under
-#    gitops/clusters/nonprod/flux-system/ and commits them. The kustomization.yaml
-#    there (the lockdown patches) is ours and is applied from the first start.
-export GITHUB_TOKEN=<personal access token; used by this command only>
-flux bootstrap github \
-  --owner=<github user> --repository=<repo> --personal \
-  --branch=main --path=gitops/clusters/nonprod \
-  --ssh-hostname=ssh.github.com:443
+CLOUDSDK_ACTIVE_CONFIG_NAME=<gcloud configuration> scripts/up.sh
 ```
 
-Bootstrap creates a read-only deploy key on this one repository and keeps its private half in the
-cluster. `--ssh-hostname` points the sync at GitHub's SSH endpoint on port 443, because the VPC firewall
-only lets nodes reach the outside on TCP 443: plain SSH to github.com:22 would be dropped. The sync URL
-becomes `ssh://git@ssh.github.com:443/<owner>/<repo>`.
+**One-time set-up** (already done here; again only to rotate):
 
-Not `--token-auth`: it also uses port 443, but it stores the personal access token itself in the
-cluster, and that token can act as you on every repository it reaches. A deploy key reaches only this
-one.
+```bash
+# the deploy key: private half into Secret Manager, public half onto the repository, never on disk for long
+d=$(mktemp -d) && ssh-keygen -q -t ed25519 -N '' -C flux-ci -f "$d/k" &&
+gcloud --configuration=<config> secrets versions add flux-deploy-key --data-file="$d/k" &&
+gh repo deploy-key add "$d/k.pub" --repo <owner>/<repo> --title flux-ci && rm -rf "$d"
+# the values
+gh secret set CLUSTER_VARS --repo <owner>/<repo> < scripts/cluster-vars.env
+```
+
+To rotate the key, run the first command, delete the old key on GitHub, and run the bootstrap
+(an apply, or `scripts/up.sh`).
+
+**Upgrading Flux:** `flux install --export > clusters/nonprod/flux-system/gotk-components.yaml` with
+the new CLI, through a pull request; Flux then upgrades itself.
 
 After that, a change is a merge to `main`; nobody runs `kubectl apply`.
 
@@ -318,18 +317,10 @@ blocks again) and Pyrra's 7-day windows start from empty. Secrets do: they live 
    behind: GKE does not delete those with the cluster, and they would bill on. The job fails if any
    disk of the cluster is still there. What stays is `bootstrap/` (state bucket, CI identity, who may
    connect, the secrets).
-2. **Rebuild:** Run workflow on `main` with `action` = `apply`.
-3. **Bootstrap:** the three steps of "Bootstrap" above, as one command. Copy
-   `scripts/cluster-vars.env.example` to `scripts/cluster-vars.env` (gitignored) once, then:
-
-   ```bash
-   CLOUDSDK_ACTIVE_CONFIG_NAME=<gcloud configuration> GITHUB_TOKEN=<token> scripts/up.sh
-   ```
-
-   Bootstrap replaces the old cluster's deploy key on GitHub (same title), so keys do not pile up.
-4. **Check:** `CLOUDSDK_ACTIVE_CONFIG_NAME=<gcloud configuration> scripts/check.sh` waits until every
-   Kustomization, HelmRelease and ExternalSecret is Ready, every workload is at its replica count, both
-   chains answer and every Prometheus target is up, then prints PASS or FAIL for each.
+2. **Rebuild:** Run workflow on `main` with `action` = `apply`. The `bootstrap` job then installs Flux
+   and waits until every Kustomization, HelmRelease and ExternalSecret is Ready, every workload is at
+   its replica count, both chains answer and every Prometheus target is up; its summary has a PASS or
+   FAIL line for each. A green run means the environment can be used.
 
 A chaos experiment or a load test still running does not block the destroy; the cluster goes with it.
 Anything added later that creates cloud resources of its own (a load balancer, a NEG) must be removed
