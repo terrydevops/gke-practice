@@ -11,3 +11,4 @@ gha-creds-*.json
 *.tfvars
 !*.tfvars.example
 cloudflare/explorer-worker/wrangler.toml
+scripts/cluster-vars.env

@@ -134,6 +134,7 @@ is created once, from Terraform outputs.
 ## Bootstrap
 
 Needs a cluster, and a user who is project owner (cluster-admin through IAM) for this one step.
+`scripts/up.sh` runs the three steps below as one command (see "Tear down and rebuild").
 No gcloud configuration is active by default, so the account is named explicitly.
 
 ```bash
@@ -306,23 +307,33 @@ GitHub, and force a copy:
 
 ## Tear down and rebuild
 
-Tear down: Actions > terraform > Run workflow on `main`, `action` = `destroy`, `confirm` = the cluster
-name. It deletes everything in `envs/nonprod`: cluster, node pool, VPC, NAT and its addresses, firewall
-rules, node service account. What stays is `bootstrap/` (state bucket, CI identity, who may connect,
-the Grafana password).
+The environment is meant to be torn down when nobody practises and rebuilt on demand, as often as
+needed. Data does not survive: Prometheus and Loki history, the chains (regtest mines its first 100
+blocks again) and Pyrra's 7-day windows start from empty. Secrets do: they live in Secret Manager
+(`bootstrap/ci/secrets.tf`), and External Secrets copies them in again.
 
-Deleting the cluster does not delete the disks behind its PersistentVolumes. The only ones today are
-monitoring's, so remove that release first; its disks go with it (`whenDeleted: Delete`). Check first
-that no chaos experiment is still running (`kubectl get podchaos,networkchaos,stresschaos -A`):
+1. **Tear down:** Actions > terraform > Run workflow on `main`, `action` = `destroy`, `confirm` = the
+   cluster name. It deletes everything in `envs/nonprod` (cluster, node pool, VPC, NAT and its
+   addresses, firewall rules, node service account), then the disks the PersistentVolumes left
+   behind: GKE does not delete those with the cluster, and they would bill on. The job fails if any
+   disk of the cluster is still there. What stays is `bootstrap/` (state bucket, CI identity, who may
+   connect, the secrets).
+2. **Rebuild:** Run workflow on `main` with `action` = `apply`.
+3. **Bootstrap:** the three steps of "Bootstrap" above, as one command. Copy
+   `scripts/cluster-vars.env.example` to `scripts/cluster-vars.env` (gitignored) once, then:
 
-```bash
-flux suspend kustomization infra-controllers   # or Flux puts the release back
-kubectl -n flux-system delete helmrelease kube-prometheus-stack
-kubectl get pv                                 # wait until none is left
-```
+   ```bash
+   CLOUDSDK_ACTIVE_CONFIG_NAME=<gcloud configuration> GITHUB_TOKEN=<token> scripts/up.sh
+   ```
 
-Anything added later that creates cloud resources (a load balancer, another volume) is removed the same
-way, or the destroy leaves it behind or fails on it. Check that nothing is left:
+   Bootstrap replaces the old cluster's deploy key on GitHub (same title), so keys do not pile up.
+4. **Check:** `CLOUDSDK_ACTIVE_CONFIG_NAME=<gcloud configuration> scripts/check.sh` waits until every
+   Kustomization, HelmRelease and ExternalSecret is Ready, every workload is at its replica count, both
+   chains answer and every Prometheus target is up, then prints PASS or FAIL for each.
+
+A chaos experiment or a load test still running does not block the destroy; the cluster goes with it.
+Anything added later that creates cloud resources of its own (a load balancer, a NEG) must be removed
+before the destroy, or the VPC cannot be deleted. Check that nothing is left:
 
 ```bash
 for r in firewall-rules disks addresses forwarding-rules network-endpoint-groups target-pools; do
@@ -331,10 +342,6 @@ done
 ```
 
 Only the `default-allow-*` rules of the project's `default` VPC should be listed.
-
-Rebuild: Run workflow on `main` with `action` = `apply`, then the three Bootstrap steps above. Flux
-installs monitoring again with empty disks. The
-deploy key of the old cluster stays on GitHub with nothing left to use it; bootstrap adds a new one.
 
 ## Gaps
 

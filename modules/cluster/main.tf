@@ -102,12 +102,14 @@ resource "google_container_cluster" "this" {
     }
   }
 
-  # System metrics only. kube-state metrics come from kube-prometheus-stack;
-  # GKE's own package (namespace gke-managed-cim) would be a second copy.
+  # System metrics only. kube-prometheus-stack already scrapes the kubelet,
+  # cAdvisor and kube-state-metrics; GKE's own package (namespace
+  # gke-managed-cim) and Managed Service for Prometheus would be second copies,
+  # and Managed Prometheus bills every sample (about A$26 a month here).
   monitoring_config {
     enable_components = ["SYSTEM_COMPONENTS"]
     managed_prometheus {
-      enabled = true
+      enabled = false
     }
   }
 
