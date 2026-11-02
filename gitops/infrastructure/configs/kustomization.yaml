@@ -9,6 +9,7 @@ resources:
   - datasource-loki.yaml
   - grafana-secret.yaml
   - grafana.yaml
+  - process-exporter.yaml
 # Dashboards: Grafana's sidecar loads ConfigMaps labelled grafana_dashboard=1,
 # from the monitoring namespace only. The JSON stays a file so diffs read well.
 # Flux substitution is off for it: Grafana's own ${datasource} is not a Flux

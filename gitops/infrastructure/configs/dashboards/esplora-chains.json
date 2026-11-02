@@ -1606,6 +1606,203 @@
     },
     {
       "type": "row",
+      "title": "Processes inside the esplora container (runit)",
+      "id": 42,
+      "collapsed": false,
+      "gridPos": {
+        "h": 1,
+        "w": 24,
+        "x": 0,
+        "y": 77
+      },
+      "panels": []
+    },
+    {
+      "type": "timeseries",
+      "title": "CPU by process",
+      "id": 43,
+      "datasource": {
+        "type": "prometheus",
+        "uid": "${datasource}"
+      },
+      "description": "process-exporter, read from the host's /proc. runsvdir includes runsv and svlogd; prerenderer is node, websocket is websocat.",
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 0,
+        "y": 78
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "esplora_process:cpu_seconds:rate5m{namespace=\"$namespace\", pod=\"esplora-0\"}",
+          "legendFormat": "{{process}}",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${datasource}"
+          }
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "cores",
+          "custom": {
+            "lineWidth": 1,
+            "fillOpacity": 5
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom"
+        },
+        "tooltip": {
+          "mode": "multi"
+        }
+      }
+    },
+    {
+      "type": "timeseries",
+      "title": "Memory (RSS) by process",
+      "id": 44,
+      "datasource": {
+        "type": "prometheus",
+        "uid": "${datasource}"
+      },
+      "description": "Resident memory per process group. electrs here matches electrs' own RSS panel above.",
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 12,
+        "y": 78
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "esplora_process:resident_memory_bytes{namespace=\"$namespace\", pod=\"esplora-0\"}",
+          "legendFormat": "{{process}}",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${datasource}"
+          }
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "bytes",
+          "custom": {
+            "lineWidth": 1,
+            "fillOpacity": 5
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom"
+        },
+        "tooltip": {
+          "mode": "multi"
+        }
+      }
+    },
+    {
+      "type": "timeseries",
+      "title": "Running processes per service",
+      "id": 45,
+      "datasource": {
+        "type": "prometheus",
+        "uid": "${datasource}"
+      },
+      "description": "0 means the service is down. EsploraProcessDown fires when the node, electrs or nginx stays at 0 for 2 minutes. nginx is a master and its workers.",
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 0,
+        "y": 86
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "esplora_process:num_procs{namespace=\"$namespace\", pod=\"esplora-0\"}",
+          "legendFormat": "{{process}}",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${datasource}"
+          }
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "none",
+          "custom": {
+            "lineWidth": 1,
+            "fillOpacity": 5
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom"
+        },
+        "tooltip": {
+          "mode": "multi"
+        }
+      }
+    },
+    {
+      "type": "timeseries",
+      "title": "Process uptime",
+      "id": 46,
+      "datasource": {
+        "type": "prometheus",
+        "uid": "${datasource}"
+      },
+      "description": "Time since the oldest process of the group started. A drop to near 0 while the container keeps running means runit restarted that service.",
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 12,
+        "y": 86
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "time() - esplora_process:oldest_start_time_seconds{namespace=\"$namespace\", pod=\"esplora-0\"}",
+          "legendFormat": "{{process}}",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${datasource}"
+          }
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "s",
+          "custom": {
+            "lineWidth": 1,
+            "fillOpacity": 5
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom"
+        },
+        "tooltip": {
+          "mode": "multi"
+        }
+      }
+    },
+    {
+      "type": "row",
       "title": "Logs: node and electrs (Loki)",
       "id": 37,
       "collapsed": false,
@@ -1613,7 +1810,7 @@
         "h": 1,
         "w": 24,
         "x": 0,
-        "y": 77
+        "y": 94
       },
       "panels": []
     },
@@ -1630,7 +1827,7 @@
         "h": 7,
         "w": 12,
         "x": 0,
-        "y": 78
+        "y": 95
       },
       "targets": [
         {
@@ -1676,7 +1873,7 @@
         "h": 7,
         "w": 12,
         "x": 12,
-        "y": 78
+        "y": 95
       },
       "targets": [
         {
@@ -1725,7 +1922,7 @@
         "h": 10,
         "w": 12,
         "x": 0,
-        "y": 85
+        "y": 102
       },
       "targets": [
         {
@@ -1758,7 +1955,7 @@
         "h": 10,
         "w": 12,
         "x": 12,
-        "y": 85
+        "y": 102
       },
       "targets": [
         {

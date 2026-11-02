@@ -224,6 +224,13 @@ comes from a Secret that External Secrets creates there.
   server, labelled by process from svlogd's prefix: `{job="chain-pods", namespace="esplora-liquid",
   component="node"}` (also `electrs`, `tor`, `nginx`, ...). Tip-height poll lines and tor bootstrap
   retries are dropped. A logs row at the bottom of "Esplora chains".
+- **Processes in the chain containers:** the esplora image runs its services under runit in one
+  container, so cAdvisor sees only their sum and a service restarted by runit never shows as a
+  container restart. `process-exporter` (a DaemonSet in `monitoring`, hostPID, read-only `/proc`;
+  `infrastructure/configs/process-exporter.yaml`) counts each process; recording rules
+  `esplora_process:*` tie them to namespace and pod. Row "Processes inside the esplora container"
+  in "Esplora chains": CPU, memory, running count, uptime per service. `EsploraProcessDown` fires
+  when the chain node, electrs or nginx stays at 0 processes for 2 minutes.
 - **SLOs:** `infrastructure/slo/slo-whoami.yaml`. The blackbox exporter probes each whoami Service
   from inside the cluster every 15s; Pyrra turns the results into availability (99%) and latency
   (95% under 250ms) objectives over 7 days, one budget per environment, with burn-rate alerts
