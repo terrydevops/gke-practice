@@ -20,3 +20,16 @@ misconfigurations:
       - gitops/workloads/esplora-liquid/statefulset.yaml
     statement: public Esplora image writes runit, nginx and tor state under /etc, /run and /var at start
     expired_at: 2027-04-29
+  # process-exporter counts the processes inside the Esplora containers from
+  # the host's PID namespace, read-only /proc, as non-root. The alternative, a
+  # sidecar sharing the pod's PID namespace, breaks the image's runit shutdown.
+  - id: KSV-0010
+    paths:
+      - gitops/infrastructure/configs/process-exporter.yaml
+    statement: process-exporter needs the host PID namespace to see other containers' processes
+    expired_at: 2027-05-02
+  - id: KSV-0121
+    paths:
+      - gitops/infrastructure/configs/process-exporter.yaml
+    statement: process-exporter reads the host's /proc, mounted read-only
+    expired_at: 2027-05-02
