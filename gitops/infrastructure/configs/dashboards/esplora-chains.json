@@ -1625,7 +1625,7 @@
         "type": "prometheus",
         "uid": "${datasource}"
       },
-      "description": "process-exporter, read from the host's /proc. runsvdir includes runsv and svlogd; prerenderer is node, websocket is websocat.",
+      "description": "process-exporter, read from the host's /proc. A process that is not listed counts towards its parent: runsvdir holds runsv, svlogd and the two npm wrappers that start the prerenderer (most of its memory). The prerenderer itself is node; websocket is websocat.",
       "gridPos": {
         "h": 8,
         "w": 12,
@@ -1671,7 +1671,7 @@
         "type": "prometheus",
         "uid": "${datasource}"
       },
-      "description": "Resident memory per process group. electrs here matches electrs' own RSS panel above.",
+      "description": "Resident memory per process group. electrs here matches electrs' own RSS panel above. runsvdir is large because it includes the prerenderer's npm wrappers.",
       "gridPos": {
         "h": 8,
         "w": 12,
