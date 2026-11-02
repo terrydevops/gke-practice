@@ -1,0 +1,169 @@
+###
+# Per-process metrics for the Esplora containers.
+#
+# The esplora image runs about eight services under runit in ONE container
+# (node, electrs, nginx, prerenderer, websocket, tor, socat, syslog). cAdvisor
+# sees only the container: not which process uses the CPU or memory, and not a
+# service that runit restarted (the container does not restart, so "Container
+# restarts" stays 0).
+#
+# process-exporter reads the host's /proc (hostPID, read-only), like the
+# node-exporter in the same namespace. The esplora pod is not changed: sharing
+# its PID namespace with a sidecar would break runit_boot.sh, whose shutdown
+# kills every process except PID 1.
+#
+# Each group is "<comm>;<cgroup>". The cgroup carries the container ID, which
+# the rules below join with kube_pod_container_info to get namespace and pod;
+# nginx, node and tor also run in other containers. Children that match no
+# name (runsv, svlogd, ...) count towards their parent's group.
+#
+# Here and not in infrastructure/controllers: the PodMonitor and the rules need
+# the CRDs that the kube-prometheus-stack release installs.
+###
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: process-exporter
+  namespace: monitoring
+automountServiceAccountToken: false
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: process-exporter
+  namespace: monitoring
+data:
+  config.yml: |
+    process_names:
+      - comm: [bitcoind, liquidd, electrs, nginx, node, websocat, tor, socat, runsvdir]
+        name: "{{.Comm}};{{.Cgroups}}"
+---
+apiVersion: apps/v1
+kind: DaemonSet
+metadata:
+  name: process-exporter
+  namespace: monitoring
+  labels:
+    app.kubernetes.io/name: process-exporter
+  annotations:
+    configmap.reloader.stakater.com/reload: process-exporter # the config is read once at start
+spec:
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: process-exporter
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: process-exporter
+    spec:
+      serviceAccountName: process-exporter
+      automountServiceAccountToken: false
+      priorityClassName: platform-critical
+      hostPID: true
+      tolerations:
+        - operator: Exists
+      containers:
+        - name: process-exporter
+          image: docker.io/ncabatoff/process-exporter:0.8.7@sha256:bc2363ff7e05ada1b2a694f06c43dc824dc26cd6e487b5d36b66b1a40df4e842
+          args:
+            - --procfs=/host/proc
+            - --config.path=/config/config.yml
+            - -threads=false # one series per group, not per thread
+          ports:
+            - name: metrics
+              containerPort: 9256
+          readinessProbe:
+            httpGet: { path: /metrics, port: metrics }
+          securityContext:
+            readOnlyRootFilesystem: true
+            allowPrivilegeEscalation: false
+            capabilities: { drop: [ALL] }
+          # 5m CPU: a full node had only 8m of requests left when this was added
+          resources: { requests: { cpu: 5m, memory: 32Mi }, limits: { memory: 64Mi } }
+          volumeMounts:
+            - { name: proc, mountPath: /host/proc, readOnly: true }
+            - { name: config, mountPath: /config, readOnly: true }
+      volumes:
+        - name: proc
+          hostPath: { path: /proc }
+        - name: config
+          configMap: { name: process-exporter }
+---
+apiVersion: monitoring.coreos.com/v1
+kind: PodMonitor
+metadata:
+  name: process-exporter
+  namespace: monitoring
+spec:
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: process-exporter
+  podMetricsEndpoints:
+    - port: metrics
+---
+apiVersion: monitoring.coreos.com/v1
+kind: PrometheusRule
+metadata:
+  name: esplora-processes
+  namespace: monitoring
+  annotations:
+    # infra-configs substitutes variables; $1 and $labels below are Prometheus's
+    kustomize.toolkit.fluxcd.io/substitute: disabled
+spec:
+  groups:
+    - name: esplora-processes
+      rules:
+        # group name -> process and container_id; container_id -> namespace and
+        # pod. Only the esplora container of the two chains is kept.
+        - record: esplora_process:cpu_seconds:rate5m
+          expr: >-
+            sum by (namespace, pod, process) (
+              label_replace(label_replace(
+                rate(namedprocess_namegroup_cpu_seconds_total[5m]),
+                "process", "$1", "groupname", "([^;]+);.*"),
+                "container_id", "containerd://$1", "groupname", ".*cri-containerd-([0-9a-f]+)\\.scope.*")
+              * on (container_id) group_left (namespace, pod)
+              kube_pod_container_info{namespace=~"esplora|esplora-liquid", container="esplora"}
+            )
+        - record: esplora_process:resident_memory_bytes
+          expr: >-
+            sum by (namespace, pod, process) (
+              label_replace(label_replace(
+                namedprocess_namegroup_memory_bytes{memtype="resident"},
+                "process", "$1", "groupname", "([^;]+);.*"),
+                "container_id", "containerd://$1", "groupname", ".*cri-containerd-([0-9a-f]+)\\.scope.*")
+              * on (container_id) group_left (namespace, pod)
+              kube_pod_container_info{namespace=~"esplora|esplora-liquid", container="esplora"}
+            )
+        - record: esplora_process:num_procs
+          expr: >-
+            sum by (namespace, pod, process) (
+              label_replace(label_replace(
+                namedprocess_namegroup_num_procs,
+                "process", "$1", "groupname", "([^;]+);.*"),
+                "container_id", "containerd://$1", "groupname", ".*cri-containerd-([0-9a-f]+)\\.scope.*")
+              * on (container_id) group_left (namespace, pod)
+              kube_pod_container_info{namespace=~"esplora|esplora-liquid", container="esplora"}
+            )
+        - record: esplora_process:oldest_start_time_seconds
+          expr: >-
+            max by (namespace, pod, process) (
+              label_replace(label_replace(
+                namedprocess_namegroup_oldest_start_time_seconds,
+                "process", "$1", "groupname", "([^;]+);.*"),
+                "container_id", "containerd://$1", "groupname", ".*cri-containerd-([0-9a-f]+)\\.scope.*")
+              * on (container_id) group_left (namespace, pod)
+              kube_pod_container_info{namespace=~"esplora|esplora-liquid", container="esplora"}
+            )
+        # The three services a user needs: the chain node, the index, the API
+        # front. runit restarts a crashed one; this fires when it stays down.
+        - alert: EsploraProcessDown
+          expr: esplora_process:num_procs{process=~"bitcoind|liquidd|electrs|nginx"} == 0
+          for: 2m
+          labels:
+            severity: warning
+          annotations:
+            summary: "{{ $labels.process }} is not running in {{ $labels.namespace }}/{{ $labels.pod }}"
+            description: >-
+              runit has not brought it back for 2 minutes. Check with
+              kubectl -n {{ $labels.namespace }} exec {{ $labels.pod }} -c esplora -- sv status /etc/service/*
