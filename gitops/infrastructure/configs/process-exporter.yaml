@@ -60,6 +60,14 @@ spec:
       automountServiceAccountToken: false
       priorityClassName: platform-critical
       hostPID: true
+      # Not root: stat, status and cgroup of other users' processes are world
+      # readable, and that is all the metrics below use. io and fd counts are
+      # not, so namedprocess_scrape_partial_errors keeps counting; that is fine.
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 65534
+        runAsGroup: 65534
+        seccompProfile: { type: RuntimeDefault }
       tolerations:
         - operator: Exists
       containers:
