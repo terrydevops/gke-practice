@@ -24,10 +24,19 @@ spec:
   groups:
     - name: lightning
       rules:
-        # The node's RPC does not answer. While it is down it cannot watch
-        # the chain for an old channel state broadcast by a peer.
+        # The node's RPC does not answer, or the node's pod is not Ready (gone,
+        # crash-looping, scaled to 0: then it has no cln_up at all). While it
+        # is down it cannot watch the chain for an old channel state
+        # broadcast by a peer. Per node: the StatefulSet cln-<node>, from
+        # kube-state-metrics.
         - alert: ClnDown
-          expr: cln_up == 0 or absent_over_time(cln_up{namespace="lightning"}[2m])
+          expr: >-
+            cln_up == 0
+            or on (node)
+            label_replace(
+              kube_statefulset_status_replicas_ready{namespace="lightning", statefulset=~"cln-.+"},
+              "node", "$1", "statefulset", "cln-(.+)"
+            ) < 1
           for: 2m
           labels: { severity: warning }
           annotations:
