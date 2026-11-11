@@ -12,7 +12,8 @@
 #              account (bootstrap/ci), so the `if` below is a convenience; the
 #              gate is in IAM, where a workflow file cannot change it.
 #   bootstrap: after an apply, the same account installs Flux
-#              (scripts/ci-bootstrap.sh) and waits until scripts/check.sh passes.
+#              (scripts/ci-bootstrap.sh), waits until scripts/check.sh passes,
+#              then makes a Lightning payment end to end (scripts/ln-demo.sh).
 #   destroy  : the same account and gate. Run workflow with action=destroy and
 #              the cluster name in `confirm`. Removes everything in envs/nonprod,
 #              then the disks the cluster's PersistentVolumes left behind;
@@ -243,6 +244,15 @@ jobs:
         env:
           CONTEXT: gke-practice
         run: scripts/check.sh
+      # A real payment over the regtest Lightning nodes: funds alice, opens a
+      # channel to bob, pays an invoice (scripts/ln-demo.sh). Fails the run
+      # when the nodes are up but cannot open a channel or pay.
+      - name: Lightning end to end
+        env:
+          CONTEXT: gke-practice
+        run: |
+          scripts/ln-demo.sh open
+          scripts/ln-demo.sh pay
 
   # Plans the destroy and applies exactly that plan. The cluster name in
   # `confirm` guards against a misclick; it reaches the shell through env, so
