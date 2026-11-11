@@ -11,64 +11,55 @@ cluster, 24 resources) has been planned but never applied.
 ## Architecture
 
 ```mermaid
-flowchart LR
-  op["Operator<br/>kubectl, port-forward"]
-
+flowchart TB
   subgraph gh["GitHub"]
     ci["Actions<br/>CI checks, terraform plan/apply,<br/>rebuild: check.sh + Lightning e2e"]
-    repo["gitops/"]
-    dep["Dependabot<br/>images, providers"]
+    repo["gitops/<br/>Dependabot keeps images current"]
   end
+  op["Operator<br/>kubectl, port-forward"]
 
   subgraph gcp["GCP project"]
     wif["Workload Identity Federation<br/>main only: apply SA"]
     sm["Secret Manager"]
-    vpc["VPC<br/>private nodes, Cloud NAT"]
 
-    subgraph gke["GKE Standard: gke-practice-nonprod, Spot e2-standard-2 x1-3, Dataplane V2"]
+    subgraph gke["GKE Standard, private nodes, Cloud NAT, Spot e2-standard-2 x1-3"]
       flux["Flux"]
       eso["External Secrets"]
-      dns["DNS<br/>node-local cache, kube-dns"]
+      dns["DNS<br/>node-local cache"]
 
-      subgraph mon["monitoring: kube-prometheus-stack"]
-        ksm["kube-state-metrics"]
-        prom["Prometheus"]
+      subgraph ln["namespace lightning: PSS restricted, default-deny"]
+        alice["Core Lightning: alice<br/>lightningd v26.06.10 + lnwatch"]
+        bob["Core Lightning: bob<br/>lightningd v26.06.10 + lnwatch"]
+        btc["bitcoind<br/>Bitcoin Core 32.1, regtest"]
+      end
+
+      subgraph mon["monitoring"]
+        prom["Prometheus<br/>+ kube-state-metrics"]
         graf["Grafana"]
         am["Alertmanager"]
       end
 
-      subgraph ln["namespace lightning: PSS restricted, NetworkPolicy default-deny"]
-        btc["bitcoind<br/>Bitcoin Core 32.1, regtest<br/>miner: a block every 10 min"]
-        alice["Core Lightning: alice<br/>lightningd v26.06.10 + lnwatch<br/>1 replica, wallet DB on 2 disks"]
-        bob["Core Lightning: bob<br/>lightningd v26.06.10 + lnwatch<br/>1 replica, wallet DB on 2 disks"]
-      end
-
-      other["esplora, esplora-liquid,<br/>tenant apps, cloudflared"]
+      other["also: esplora, esplora-liquid,<br/>tenant apps, cloudflared"]
     end
   end
 
   ntfy["ntfy<br/>phone"]
-  cf["Cloudflare"]
 
-  ci -->|OIDC| wif
-  wif -->|terraform apply| vpc
-  wif -->|terraform apply| gke
-  dep -.->|PRs| repo
+  ci -->|"OIDC, terraform apply"| wif
+  wif -->|creates| gke
   repo -->|pulls| flux
+  op -->|DNS endpoint| gke
   flux -->|applies| ln
-  sm -->|reads, Workload Identity| eso
+  sm -->|reads| eso
   eso -->|RPC password| ln
   alice <==>|"channel :9735, 1,000,000 sat"| bob
   alice -->|RPC :18443| btc
   bob -->|RPC :18443| btc
   ln -.->|DNS :53| dns
-  prom -->|scrape :9102| ln
-  ksm --> prom
+  prom -->|"scrape :9102"| ln
   graf -->|queries| prom
   prom -->|alerts| am
   am -->|webhook| ntfy
-  other -->|tunnel| cf
-  op -->|DNS endpoint| gke
 ```
 
 Terraform builds the GCP side from GitHub Actions; only `main` can impersonate the apply account.
