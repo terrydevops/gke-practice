@@ -8,6 +8,85 @@ The GKE counterpart of `eks-practice` v2, built to learn where GKE differs. Same
 (`bootstrap/`) exist; all three roots keep their state in the bucket. `envs/nonprod` (network and
 cluster, 24 resources) has been planned but never applied.
 
+## Architecture
+
+```mermaid
+flowchart LR
+  op["Operator<br/>kubectl, port-forward"]
+
+  subgraph gh["GitHub"]
+    ci["Actions<br/>CI checks, terraform plan/apply,<br/>rebuild: check.sh + Lightning e2e"]
+    repo["gitops/"]
+    dep["Dependabot<br/>images, providers"]
+  end
+
+  subgraph gcp["GCP project"]
+    wif["Workload Identity Federation<br/>main only: apply SA"]
+    sm["Secret Manager"]
+    vpc["VPC<br/>private nodes, Cloud NAT"]
+
+    subgraph gke["GKE Standard: gke-practice-nonprod, Spot e2-standard-2 x1-3, Dataplane V2"]
+      flux["Flux"]
+      eso["External Secrets"]
+      dns["DNS<br/>node-local cache, kube-dns"]
+
+      subgraph mon["monitoring: kube-prometheus-stack"]
+        ksm["kube-state-metrics"]
+        prom["Prometheus"]
+        graf["Grafana"]
+        am["Alertmanager"]
+      end
+
+      subgraph ln["namespace lightning: PSS restricted, NetworkPolicy default-deny"]
+        btc["bitcoind<br/>Bitcoin Core 32.1, regtest<br/>miner: a block every 10 min"]
+        alice["Core Lightning: alice<br/>lightningd v26.06.10 + lnwatch<br/>1 replica, wallet DB on 2 disks"]
+        bob["Core Lightning: bob<br/>lightningd v26.06.10 + lnwatch<br/>1 replica, wallet DB on 2 disks"]
+      end
+
+      other["esplora, esplora-liquid,<br/>tenant apps, cloudflared"]
+    end
+  end
+
+  ntfy["ntfy<br/>phone"]
+  cf["Cloudflare"]
+
+  ci -->|OIDC| wif
+  wif -->|terraform apply| vpc
+  wif -->|terraform apply| gke
+  dep -.->|PRs| repo
+  repo -->|pulls| flux
+  flux -->|applies| ln
+  sm -->|reads, Workload Identity| eso
+  eso -->|RPC password| ln
+  alice <==>|"channel :9735, 1,000,000 sat"| bob
+  alice -->|RPC :18443| btc
+  bob -->|RPC :18443| btc
+  ln -.->|DNS :53| dns
+  prom -->|scrape :9102| ln
+  ksm --> prom
+  graf -->|queries| prom
+  prom -->|alerts| am
+  am -->|webhook| ntfy
+  other -->|tunnel| cf
+  op -->|DNS endpoint| gke
+```
+
+Terraform builds the GCP side from GitHub Actions; only `main` can impersonate the apply account.
+Flux then reconciles everything in the cluster from `gitops/`.
+
+The Lightning workload (details in [gitops/README.md](gitops/README.md#lightning)):
+
+- **One writer per node.** Each Core Lightning (CLN) node is a StatefulSet with one replica: two
+  copies could sign different channel states, and an old state broadcast loses the channel.
+- **Synchronous backup, not snapshots.** The wallet is `sqlite3://<main>:<backup>`, written to both
+  disks in one transaction.
+- **Nothing exposed.** The JSON-RPC is a unix socket inside the pod, gRPC listens on 127.0.0.1 only,
+  and clnrest is off. The namespace denies all traffic except the paths drawn above.
+- **Metrics** come from `lnwatch`, a sidecar that reads the node through `lightning-cli`. Its
+  metrics are prefixed `cln_`, so an lnd node added later (`lnd_`, from lndmon) does not mix with them.
+  Five alerts (`ClnDown`, `ClnBehindChain`, `ClnChannelNotNormal`, `ClnChannelPeerDisconnected`,
+  `LnwatchStale`) are unit-tested with promtool in CI.
+
 ## Layout
 
 ```
