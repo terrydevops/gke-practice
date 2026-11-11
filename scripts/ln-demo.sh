@@ -41,7 +41,9 @@ wait_for() {
   local what=$1 pattern=$2
   shift 2
   for _ in $(seq 60); do
-    if "$@" | grep -q "$pattern"; then return 0; fi
+    # not grep -q: it stops reading at the first match, the command then
+    # dies of SIGPIPE, and with pipefail the match counts as a failure
+    if "$@" | grep "$pattern" >/dev/null; then return 0; fi
     mine 1
     sleep 5
   done
