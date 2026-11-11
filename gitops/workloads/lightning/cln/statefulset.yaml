@@ -111,6 +111,7 @@ spec:
           # nothing, and every restart reconnects all its peers.
           securityContext:
             allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
             capabilities: { drop: ["ALL"] }
           resources:
             requests: { cpu: 50m, memory: 128Mi }
@@ -118,6 +119,7 @@ spec:
           volumeMounts:
             - { name: data, mountPath: /data }
             - { name: backup, mountPath: /backup }
+            - { name: tmp, mountPath: /tmp }
         # Node metrics for Prometheus (components/lnwatch/collect.sh), through
         # the node's RPC socket and bitcoind's RPC for the chain height.
         - name: lnwatch
@@ -132,6 +134,7 @@ spec:
                 secretKeyRef: { name: bitcoind-rpc, key: password }
           securityContext:
             allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
             capabilities: { drop: ["ALL"] }
           resources:
             requests: { cpu: 10m, memory: 16Mi }
@@ -140,6 +143,7 @@ spec:
             - { name: data, mountPath: /data }
             - { name: lnwatch, mountPath: /lnwatch, readOnly: true }
             - { name: metrics, mountPath: /metrics }
+            - { name: tmp, mountPath: /tmp }
         - name: metrics
           image: docker.io/nginxinc/nginx-unprivileged:1.30.4-alpine@sha256:adf5042a17f4ecdd200c595fa9ffd1be37efb18f89a830bd1a00e4ab4d59d42c
           ports:
@@ -157,6 +161,8 @@ spec:
             - { name: lnwatch-conf, mountPath: /etc/nginx/conf.d, readOnly: true }
             - { name: metrics-tmp, mountPath: /tmp }
       volumes:
+        - name: tmp
+          emptyDir: {}
         - name: lnwatch
           configMap:
             name: lnwatch
