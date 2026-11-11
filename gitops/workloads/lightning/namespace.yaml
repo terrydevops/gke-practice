@@ -3,9 +3,9 @@
 # with a channel between them. A chain workload like esplora: platform-owned,
 # stateful, slow to restart.
 #
-# Every container here runs as non-root, but the bitcoind and CLN images are
-# not built for a read-only root, so the namespace stays at `baseline` like
-# esplora; warn / audit at `restricted` list what is left.
+# Pod Security `restricted`, unlike esplora: every container here runs as
+# non-root with a read-only root filesystem, no capabilities and the runtime's
+# seccomp profile. Each process writes only to its mounted disk and /tmp.
 ###
 apiVersion: v1
 kind: Namespace
@@ -13,6 +13,6 @@ metadata:
   name: lightning
   labels:
     workload-class: chain
-    pod-security.kubernetes.io/enforce: baseline
+    pod-security.kubernetes.io/enforce: restricted
     pod-security.kubernetes.io/warn: restricted
     pod-security.kubernetes.io/audit: restricted

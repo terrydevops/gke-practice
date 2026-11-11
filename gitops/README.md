@@ -114,7 +114,8 @@ kubectl -n esplora port-forward svc/esplora 18080:80 14224:4224
 ### Lightning
 
 `workloads/lightning`: a regtest bitcoind and two Core Lightning nodes, `cln-alice` and `cln-bob`
-(one base, `workloads/lightning/cln`, with a name suffix each). All of it runs as non-root.
+(one base, `workloads/lightning/cln`, with a name suffix each). Unlike esplora the namespace is at
+Pod Security `restricted`: non-root, read-only root filesystem, no capabilities, everywhere.
 
 - **One replica per node, always.** The node's database is the latest state of each channel; two
   copies can sign different states, and broadcasting an old one lets the peer take the channel as a
