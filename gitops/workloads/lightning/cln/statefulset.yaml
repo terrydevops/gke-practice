@@ -1,0 +1,186 @@
+###
+# One Core Lightning node. cln-alice and cln-bob (../cln-alice, ../cln-bob)
+# are this base with a name suffix and a `node` label; the alias comes from
+# that label.
+#
+# Exactly one replica, and it must stay that way. A Lightning node's database
+# is the latest state of every channel. Two copies running at once can sign
+# two different states, and broadcasting an old one lets the peer take the
+# whole channel as a penalty. So: no active-active, no HPA, no PDB.
+# A StatefulSet also fences: when a node goes away, the controller does not
+# start the pod elsewhere until the old one is confirmed gone (deleted, or the
+# node object removed), so two cln-alice-0 never run together.
+#
+# Two disks: /data (the node, its hsm_secret and the wallet database) and
+# /backup. The wallet is `sqlite3://<main>:<backup>`: lightningd writes every
+# change to both files in the same transaction. A periodic snapshot would not
+# do: restoring a channel state older than the last one is how funds are lost.
+#
+# The bitcoind password goes into the node's config file (mode 600) at start,
+# not into the arguments.
+###
+apiVersion: v1
+kind: Service
+metadata:
+  name: cln
+  namespace: lightning
+  labels:
+    app: cln # what the ServiceMonitor selects (../monitoring.yaml)
+spec:
+  selector:
+    app: cln
+  ports:
+    - { name: peer, port: 9735, targetPort: peer }
+    - { name: metrics, port: 9102, targetPort: metrics }
+---
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: cln
+  namespace: lightning
+spec:
+  serviceName: cln
+  replicas: 1
+  selector:
+    matchLabels:
+      app: cln
+  persistentVolumeClaimRetentionPolicy:
+    whenDeleted: Delete
+    whenScaled: Retain
+  template:
+    metadata:
+      labels:
+        app: cln
+        lightning-node: "true"
+    spec:
+      priorityClassName: chain-node
+      terminationGracePeriodSeconds: 60
+      automountServiceAccountToken: false
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 1000
+        runAsGroup: 1000
+        fsGroup: 1000
+        seccompProfile: { type: RuntimeDefault }
+      containers:
+        - name: lightningd
+          image: docker.io/elementsproject/lightningd:v26.06.10@sha256:59f10c4c7429bb80791481c906859f6de1aa58ef224758aa25d50b7d47fc0c04
+          # lightningd itself, not the image's entrypoint (that one waits on
+          # inotify and can bridge the RPC socket to TCP, which is not wanted).
+          command: ["sh", "-c"]
+          args:
+            - |
+              umask 077
+              cat > /data/config <<EOF
+              network=regtest
+              alias=$NODE
+              bind-addr=0.0.0.0:9735
+              announce-addr=$NODE_HOST:9735
+              bitcoin-rpcconnect=bitcoind.lightning.svc
+              bitcoin-rpcport=18443
+              bitcoin-rpcuser=lightning
+              bitcoin-rpcpassword=$RPC_PASSWORD
+              wallet=sqlite3:///data/regtest/lightningd.sqlite3:/backup/lightningd.sqlite3
+              log-level=info
+              EOF
+              exec lightningd --lightning-dir=/data
+          env:
+            - name: NODE
+              valueFrom:
+                fieldRef: { fieldPath: "metadata.labels['node']" }
+            - name: NODE_HOST # the per-node Service, cln-alice.lightning.svc
+              value: cln-$(NODE).lightning.svc
+            - name: RPC_PASSWORD
+              valueFrom:
+                secretKeyRef: { name: bitcoind-rpc, key: password }
+          ports:
+            - { name: peer, containerPort: 9735 }
+          # Ready once the RPC answers. Started while bitcoind is still coming
+          # up, lightningd waits for it, so the first start can take a while.
+          startupProbe:
+            exec:
+              command: ["lightning-cli", "--lightning-dir=/data", "getinfo"]
+            periodSeconds: 5
+            failureThreshold: 60 # 5 minutes
+          readinessProbe:
+            exec:
+              command: ["lightning-cli", "--lightning-dir=/data", "getinfo"]
+            periodSeconds: 15
+            timeoutSeconds: 5
+          # No liveness probe: restarting a node that is merely slow helps
+          # nothing, and every restart reconnects all its peers.
+          securityContext:
+            allowPrivilegeEscalation: false
+            capabilities: { drop: ["ALL"] }
+          resources:
+            requests: { cpu: 50m, memory: 128Mi }
+            limits: { memory: 512Mi }
+          volumeMounts:
+            - { name: data, mountPath: /data }
+            - { name: backup, mountPath: /backup }
+        # Node metrics for Prometheus (components/lnwatch/collect.sh), through
+        # the node's RPC socket and bitcoind's RPC for the chain height.
+        - name: lnwatch
+          image: docker.io/elementsproject/lightningd:v26.06.10@sha256:59f10c4c7429bb80791481c906859f6de1aa58ef224758aa25d50b7d47fc0c04
+          command: ["bash", "/lnwatch/collect.sh"]
+          env:
+            - name: NODE
+              valueFrom:
+                fieldRef: { fieldPath: "metadata.labels['node']" }
+            - name: RPC_PASSWORD
+              valueFrom:
+                secretKeyRef: { name: bitcoind-rpc, key: password }
+          securityContext:
+            allowPrivilegeEscalation: false
+            capabilities: { drop: ["ALL"] }
+          resources:
+            requests: { cpu: 10m, memory: 16Mi }
+            limits: { memory: 64Mi }
+          volumeMounts:
+            - { name: data, mountPath: /data }
+            - { name: lnwatch, mountPath: /lnwatch, readOnly: true }
+            - { name: metrics, mountPath: /metrics }
+        - name: metrics
+          image: docker.io/nginxinc/nginx-unprivileged:1.30.4-alpine@sha256:adf5042a17f4ecdd200c595fa9ffd1be37efb18f89a830bd1a00e4ab4d59d42c
+          ports:
+            - { name: metrics, containerPort: 9102 }
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            runAsUser: 101
+            capabilities: { drop: ["ALL"] }
+          resources:
+            requests: { cpu: 5m, memory: 16Mi }
+            limits: { memory: 64Mi }
+          volumeMounts:
+            - { name: metrics, mountPath: /metrics, readOnly: true }
+            - { name: lnwatch-conf, mountPath: /etc/nginx/conf.d, readOnly: true }
+            - { name: metrics-tmp, mountPath: /tmp }
+      volumes:
+        - name: lnwatch
+          configMap:
+            name: lnwatch
+        - name: lnwatch-conf
+          configMap:
+            name: lnwatch
+            items:
+              - { key: metrics.conf, path: default.conf }
+        - name: metrics
+          emptyDir: {}
+        - name: metrics-tmp
+          emptyDir: {}
+  volumeClaimTemplates:
+    - metadata:
+        name: data
+      spec:
+        accessModes: ["ReadWriteOnce"]
+        resources:
+          requests:
+            storage: 1Gi
+    - metadata:
+        name: backup
+      spec:
+        accessModes: ["ReadWriteOnce"]
+        resources:
+          requests:
+            storage: 1Gi

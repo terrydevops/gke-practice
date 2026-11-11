@@ -31,7 +31,8 @@ gitops/
 │       ├── whoami-dev/
 │       └── whoami-staging/
 ├── workloads/                  # PLATFORM-OWNED chain workloads, Pod Security baseline
-│   └── esplora/                # the public Esplora image on regtest
+│   ├── esplora/                # the public Esplora image on regtest
+│   └── lightning/              # bitcoind + two Core Lightning nodes on regtest
 └── chaos/                      # fault injection experiments, applied by hand only (never by Flux)
 ```
 
@@ -90,7 +91,7 @@ but in their own namespaces:
 
 | | Platform | Chain workloads | Tenants |
 |---|---|---|---|
-| Example | Flux, monitoring, CloudNativePG | esplora, esplora-liquid, cloudflared | whoami, explorer |
+| Example | Flux, monitoring, CloudNativePG | esplora, esplora-liquid, lightning, cloudflared | whoami, explorer |
 | Applied as | `kustomize-controller` / `helm-controller` | `kustomize-controller` | the tenant's own account |
 | Pod Security | per component (monitoring is `privileged`) | `baseline`; warn and audit at `restricted` | `restricted` |
 | Ingress | per component | default-deny, then Prometheus to the metrics port only | default-deny, then the tenant's own rules |
@@ -108,6 +109,40 @@ Not done yet: a tainted node pool of their own (a Terraform change), and anythin
 ```bash
 kubectl -n esplora port-forward svc/esplora 18080:80 14224:4224
 # UI http://127.0.0.1:18080/regtest/   metrics http://127.0.0.1:14224/metrics
+```
+
+### Lightning
+
+`workloads/lightning`: a regtest bitcoind and two Core Lightning nodes, `cln-alice` and `cln-bob`
+(one base, `workloads/lightning/cln`, with a name suffix each). All of it runs as non-root.
+
+- **One replica per node, always.** The node's database is the latest state of each channel; two
+  copies can sign different states, and broadcasting an old one lets the peer take the channel as a
+  penalty. No HPA, no PDB, no active-active. The StatefulSet is the fence: after a node is lost it
+  does not start the pod elsewhere until the old one is confirmed gone.
+- **Backup is synchronous.** `wallet=sqlite3://<main>:<backup>` writes every change to `/data` and
+  to a second disk, `/backup`, in one transaction. A snapshot taken now and then would hold an old
+  channel state, which is the one thing that must never be restored.
+- **The bitcoind password** comes from Secret Manager (`lightning-bitcoind-rpc`) through ESO, and
+  goes into each process's config file at start, not its arguments.
+- **Network:** closed both ways, then nodes to bitcoind (RPC, ZMQ), nodes to each other (9735), nodes
+  to kube-dns, Prometheus to :9102. bitcoind publishes ZMQ for lnd, the next node to add.
+- **Metrics and alerts:** `components/lnwatch` (lightning-cli, flat output) on :9102; dashboard
+  "Lightning (Core Lightning)"; `ClnDown`, `ClnBehindChain`, `ClnChannelNotNormal`,
+  `ClnChannelPeerDisconnected`.
+
+The password, once (the secret exists after `bootstrap/ci` is applied):
+
+```bash
+openssl rand -hex 24 | tr -d '\n' | gcloud secrets versions add lightning-bitcoind-rpc --data-file=-
+```
+
+A channel and a payment, from the laptop:
+
+```bash
+CONTEXT=gke_<project>_<zone>_gke-practice-nonprod scripts/ln-demo.sh open   # fund, connect, open, confirm
+CONTEXT=... scripts/ln-demo.sh pay     # bob invoices 50,000 sat, alice pays
+CONTEXT=... scripts/ln-demo.sh close   # cooperative close
 ```
 
 ## From Argo CD (eks-practice v2) to Flux (here)

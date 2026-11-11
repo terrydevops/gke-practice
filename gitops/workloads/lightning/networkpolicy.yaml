@@ -1,0 +1,94 @@
+###
+# Closed both ways, then opened per path:
+#   lightning nodes -> bitcoind  RPC 18443, ZMQ 28332-28333 (lnd, phase 2)
+#   lightning nodes <-> each other  9735, the Lightning peer port
+#   lightning nodes -> kube-dns  they reach bitcoind and each other by name
+#   Prometheus -> lnwatch 9102
+# Nothing outside the namespace reaches bitcoind or a node; the RPC socket of
+# a CLN node is a unix socket inside its pod.
+###
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: default-deny
+  namespace: lightning
+spec:
+  podSelector: {}
+  policyTypes:
+    - Ingress
+    - Egress
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: bitcoind-from-nodes
+  namespace: lightning
+spec:
+  podSelector:
+    matchLabels:
+      app: bitcoind
+  policyTypes:
+    - Ingress
+  ingress:
+    - from:
+        - podSelector:
+            matchLabels:
+              lightning-node: "true"
+      ports:
+        - { protocol: TCP, port: 18443 }
+        - { protocol: TCP, port: 28332 }
+        - { protocol: TCP, port: 28333 }
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: nodes
+  namespace: lightning
+spec:
+  podSelector:
+    matchLabels:
+      lightning-node: "true"
+  policyTypes:
+    - Ingress
+    - Egress
+  ingress:
+    - from:
+        - podSelector:
+            matchLabels:
+              lightning-node: "true"
+      ports:
+        - { protocol: TCP, port: 9735 }
+    - from:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: monitoring
+          podSelector:
+            matchLabels:
+              app.kubernetes.io/name: prometheus
+      ports:
+        - { protocol: TCP, port: 9102 }
+  egress:
+    - to:
+        - podSelector:
+            matchLabels:
+              app: bitcoind
+      ports:
+        - { protocol: TCP, port: 18443 }
+        - { protocol: TCP, port: 28332 }
+        - { protocol: TCP, port: 28333 }
+    - to:
+        - podSelector:
+            matchLabels:
+              lightning-node: "true"
+      ports:
+        - { protocol: TCP, port: 9735 }
+    - to:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: kube-system
+          podSelector:
+            matchLabels:
+              k8s-app: kube-dns
+      ports:
+        - { protocol: UDP, port: 53 }
+        - { protocol: TCP, port: 53 }

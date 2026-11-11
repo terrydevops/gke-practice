@@ -1,0 +1,11 @@
+# The Core Lightning node "alice": ../cln with its own name, label and disks.
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+nameSuffix: -alice
+labels:
+  - pairs:
+      node: alice
+    includeSelectors: true
+    includeTemplates: true
+resources:
+  - ../cln

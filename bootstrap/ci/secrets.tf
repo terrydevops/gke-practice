@@ -99,3 +99,20 @@ resource "google_secret_manager_secret_iam_member" "flux_deploy_key" {
   role      = "roles/secretmanager.secretAccessor"
   member    = "serviceAccount:${google_service_account.apply.email}"
 }
+
+# RPC password of the regtest bitcoind that the Lightning nodes use
+# (gitops/workloads/lightning). Regtest coins are worth nothing, but the
+# password still stays out of git: the same path as every other secret here.
+resource "google_secret_manager_secret" "lightning_bitcoind_rpc" {
+  secret_id = "lightning-bitcoind-rpc"
+  replication {
+    auto {}
+  }
+  depends_on = [google_project_service.this]
+}
+
+resource "google_secret_manager_secret_iam_member" "lightning_bitcoind_rpc" {
+  secret_id = google_secret_manager_secret.lightning_bitcoind_rpc.secret_id
+  role      = "roles/secretmanager.secretAccessor"
+  member    = "${local.ksa_principal}/ns/lightning/sa/lightning-secrets"
+}
