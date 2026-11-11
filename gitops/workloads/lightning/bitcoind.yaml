@@ -1,0 +1,126 @@
+###
+# The chain the Lightning nodes run on: Bitcoin Core on regtest, with its own
+# disk, apart from the esplora chain (that one's RPC is a cookie inside the
+# esplora container, and the file belongs to that workload).
+#
+# RPC on :18443 with a password from Secret Manager (secrets.yaml), for the
+# nodes in other pods. ZMQ raw block / raw tx on :28332-28333 is for lnd in
+# phase 2; it is on from the start so adding lnd does not restart the chain.
+#
+# The miner (components/chainwatch/miner.sh) makes a block every 10 minutes;
+# it reads the password from bitcoin.conf in the shared data directory.
+###
+apiVersion: v1
+kind: Service
+metadata:
+  name: bitcoind
+  namespace: lightning
+  labels:
+    app: bitcoind
+spec:
+  selector:
+    app: bitcoind
+  ports:
+    - { name: rpc, port: 18443, targetPort: rpc }
+    - { name: zmq-block, port: 28332, targetPort: zmq-block }
+    - { name: zmq-tx, port: 28333, targetPort: zmq-tx }
+---
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: bitcoind
+  namespace: lightning
+  labels:
+    app: bitcoind
+spec:
+  serviceName: bitcoind
+  replicas: 1
+  selector:
+    matchLabels:
+      app: bitcoind
+  persistentVolumeClaimRetentionPolicy:
+    whenDeleted: Delete
+    whenScaled: Retain
+  template:
+    metadata:
+      labels:
+        app: bitcoind
+    spec:
+      priorityClassName: chain-node
+      terminationGracePeriodSeconds: 60 # bitcoind flushes its state on SIGTERM
+      automountServiceAccountToken: false
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 1000
+        runAsGroup: 1000
+        fsGroup: 1000
+        seccompProfile: { type: RuntimeDefault }
+      containers:
+        - name: bitcoind
+          image: docker.io/bitcoin/bitcoin:32.1@sha256:d2454aaf2ff4ce1ebbc49f4aa05ed044c907b849a80a3f4c0ad23e488e50bbe0
+          # bitcoind itself, not the image's entrypoint: that one chowns the
+          # data directory and drops to its own user, which needs root.
+          # The password goes into bitcoin.conf (mode 600), not the arguments:
+          # bitcoin-cli in this pod reads the same file, and with a password
+          # set bitcoind writes no cookie.
+          command: ["sh", "-c"]
+          args:
+            - |
+              umask 077
+              printf 'rpcuser=lightning\nrpcpassword=%s\n' "$RPC_PASSWORD" > /data/bitcoin.conf
+              exec bitcoind -datadir=/data -regtest -server -txindex -printtoconsole \
+                -fallbackfee=0.0002 \
+                -rpcbind=0.0.0.0 -rpcallowip=0.0.0.0/0 \
+                -zmqpubrawblock=tcp://0.0.0.0:28332 -zmqpubrawtx=tcp://0.0.0.0:28333
+          # -rpcallowip is wide on purpose: the NetworkPolicy decides who
+          # reaches :18443 (networkpolicy.yaml).
+          env:
+            - name: RPC_PASSWORD
+              valueFrom:
+                secretKeyRef: { name: bitcoind-rpc, key: password }
+          ports:
+            - { name: rpc, containerPort: 18443 }
+            - { name: zmq-block, containerPort: 28332 }
+            - { name: zmq-tx, containerPort: 28333 }
+          readinessProbe:
+            exec:
+              command: ["bitcoin-cli", "-regtest", "-datadir=/data", "getblockcount"]
+            periodSeconds: 10
+            timeoutSeconds: 5
+          securityContext:
+            allowPrivilegeEscalation: false
+            capabilities: { drop: ["ALL"] }
+          resources:
+            requests: { cpu: 50m, memory: 192Mi }
+            limits: { memory: 512Mi }
+          volumeMounts:
+            - { name: data, mountPath: /data }
+        # A block every 10 minutes, as for the esplora chains. Pause it with
+        #   kubectl -n lightning exec bitcoind-0 -c bitcoind -- touch /data/miner-paused
+        - name: miner
+          image: docker.io/bitcoin/bitcoin:32.1@sha256:d2454aaf2ff4ce1ebbc49f4aa05ed044c907b849a80a3f4c0ad23e488e50bbe0
+          command: ["sh", "/chainwatch/miner.sh"]
+          env:
+            - { name: CLI, value: bitcoin-cli -regtest -datadir=/data }
+            - { name: INTERVAL, value: "600" }
+          securityContext:
+            allowPrivilegeEscalation: false
+            capabilities: { drop: ["ALL"] }
+          resources:
+            requests: { cpu: 5m, memory: 16Mi }
+            limits: { memory: 64Mi }
+          volumeMounts:
+            - { name: data, mountPath: /data, readOnly: true }
+            - { name: chainwatch, mountPath: /chainwatch, readOnly: true }
+      volumes:
+        - name: chainwatch
+          configMap:
+            name: chainwatch
+  volumeClaimTemplates:
+    - metadata:
+        name: data
+      spec:
+        accessModes: ["ReadWriteOnce"]
+        resources:
+          requests:
+            storage: 2Gi

@@ -1,0 +1,18 @@
+###
+# Lightning on regtest: one bitcoind and two Core Lightning nodes (alice, bob)
+# with a channel between them. A chain workload like esplora: platform-owned,
+# stateful, slow to restart.
+#
+# Every container here runs as non-root, but the bitcoind and CLN images are
+# not built for a read-only root, so the namespace stays at `baseline` like
+# esplora; warn / audit at `restricted` list what is left.
+###
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: lightning
+  labels:
+    workload-class: chain
+    pod-security.kubernetes.io/enforce: baseline
+    pod-security.kubernetes.io/warn: restricted
+    pod-security.kubernetes.io/audit: restricted

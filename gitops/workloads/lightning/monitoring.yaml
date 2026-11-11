@@ -1,0 +1,66 @@
+###
+# The Lightning nodes' metrics (components/lnwatch, :9102) and their alerts.
+# Prometheus picks these up from every namespace, as for esplora.
+###
+apiVersion: monitoring.coreos.com/v1
+kind: ServiceMonitor
+metadata:
+  name: cln
+  namespace: lightning
+spec:
+  selector:
+    matchExpressions:
+      - { key: app, operator: In, values: [cln] }
+  endpoints:
+    - port: metrics
+      interval: 30s
+---
+apiVersion: monitoring.coreos.com/v1
+kind: PrometheusRule
+metadata:
+  name: lightning
+  namespace: lightning
+spec:
+  groups:
+    - name: lightning
+      rules:
+        # The node's RPC does not answer. While it is down it cannot watch
+        # the chain for an old channel state broadcast by a peer.
+        - alert: ClnDown
+          expr: cln_up == 0 or absent_over_time(cln_up{namespace="lightning"}[2m])
+          for: 2m
+          labels: { severity: warning }
+          annotations:
+            summary: "Core Lightning node {{ $labels.node }} does not answer on its RPC"
+            description: >-
+              kubectl -n lightning logs cln-{{ $labels.node }}-0 -c lightningd --tail=50
+        # The node is behind bitcoind. A node that stops following the chain
+        # misses channel closes and the deadlines that come with them.
+        - alert: ClnBehindChain
+          expr: (cln_chain_blocks - on (node) cln_blockheight) > 3
+          for: 10m
+          labels: { severity: warning }
+          annotations:
+            summary: "Core Lightning node {{ $labels.node }} is {{ $value }} blocks behind bitcoind"
+        # A channel that is not in normal operation for a while: stuck in
+        # opening, closing, or on chain. Opening takes 6 blocks on regtest,
+        # an hour with the miner's 10-minute blocks.
+        - alert: ClnChannelNotNormal
+          expr: sum by (node) (cln_channels{state!="CHANNELD_NORMAL"}) > 0
+          for: 90m
+          labels: { severity: info }
+          annotations:
+            summary: "{{ $value }} channel(s) of {{ $labels.node }} not in CHANNELD_NORMAL for 90 minutes"
+        # The peer of a channel is not connected: payments over it fail.
+        - alert: ClnChannelPeerDisconnected
+          expr: cln_channels_disconnected > 0
+          for: 10m
+          labels: { severity: warning }
+          annotations:
+            summary: "{{ $value }} channel peer(s) of {{ $labels.node }} disconnected for 10 minutes"
+        - alert: LnwatchStale
+          expr: time() - lnwatch_last_run_timestamp_seconds > 120
+          for: 5m
+          labels: { severity: info }
+          annotations:
+            summary: "lnwatch of {{ $labels.node }} has not written metrics for 2 minutes"

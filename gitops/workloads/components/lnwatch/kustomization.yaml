@@ -1,0 +1,11 @@
+###
+# Core Lightning node metrics (collect.sh), served by nginx on :9102. A
+# component like chainwatch, so the workload's namespace places the ConfigMap.
+###
+apiVersion: kustomize.config.k8s.io/v1alpha1
+kind: Component
+configMapGenerator:
+  - name: lnwatch
+    files:
+      - collect.sh
+      - metrics.conf

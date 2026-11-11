@@ -25,6 +25,16 @@ configMapGenerator:
         grafana_dashboard: "1"
       annotations:
         kustomize.toolkit.fluxcd.io/substitute: disabled
+  - name: dashboard-lightning
+    namespace: monitoring
+    files:
+      - dashboards/lightning.json
+    options:
+      disableNameSuffixHash: true
+      labels:
+        grafana_dashboard: "1"
+      annotations:
+        kustomize.toolkit.fluxcd.io/substitute: disabled
   # Flux Cluster Stats and Flux Control Plane, as published in
   # fluxcd/flux2-monitoring-example (Apache-2.0), unchanged. They read the
   # metrics set up in flux-monitoring.yaml.

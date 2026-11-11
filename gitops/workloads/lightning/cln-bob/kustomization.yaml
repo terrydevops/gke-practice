@@ -1,0 +1,11 @@
+# The Core Lightning node "bob": ../cln with its own name, label and disks.
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+nameSuffix: -bob
+labels:
+  - pairs:
+      node: bob
+    includeSelectors: true
+    includeTemplates: true
+resources:
+  - ../cln
