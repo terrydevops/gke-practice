@@ -6,6 +6,10 @@
 # so a misspelt key fails here instead of being dropped by the API server.
 # No GCP or cluster access.
 #
+# Then the alert rules: promtool parses every PrometheusRule (PromQL errors
+# fail here, kubeconform only sees a string) and runs the unit tests in
+# gitops/tests/rules against them.
+#
 # Then the postBuild substitution: every ${...} that a Kustomization with
 # postBuild renders must have a variable or a default, as Flux's strict mode
 # requires (.github/scripts/check-flux-substitution.py).
@@ -22,6 +26,7 @@ on:
       - gitops/**
       - .github/workflows/gitops.yml
       - .github/scripts/check-flux-substitution.py
+      - .github/scripts/extract-rules.py
 
 permissions:
   contents: read
@@ -42,25 +47,30 @@ jobs:
       KUBECONFORM_SHA256: 9bc2bffbf71f261128533edaf912153948b7ff238f9a531ae6d34466ec287883
       FLUX_VERSION: "2.9.3" # same as gotk-components.yaml
       FLUX_SCHEMAS_SHA256: 91a555810a37a61b021d0a7334d5623783d267a7ecbbff7d5a00e8c7df9c0d33
+      PROMETHEUS_VERSION: "3.15.0" # the cluster's Prometheus, for promtool
+      PROMETHEUS_SHA256: 2a542df32eac02ee17b9d844fb2aa1de00dafa5476579ba8a3ba862e9d572ea0
       CRDS_CATALOG: https://raw.githubusercontent.com/datreeio/CRDs-catalog/6e340600b8bfce7a453522e14b4d10f3c74cdc16
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
-      - name: Install kustomize, kubeconform and the Flux schemas
+      - name: Install kustomize, kubeconform, promtool and the Flux schemas
         working-directory: ${{ runner.temp }}
         run: |
           curl -fsSL "https://github.com/kubernetes-sigs/kustomize/releases/download/kustomize%2F${KUSTOMIZE_VERSION}/kustomize_${KUSTOMIZE_VERSION}_linux_amd64.tar.gz" -o kustomize.tgz
           curl -fsSL "https://github.com/yannh/kubeconform/releases/download/${KUBECONFORM_VERSION}/kubeconform-linux-amd64.tar.gz" -o kubeconform.tgz
           curl -fsSL "https://github.com/fluxcd/flux2/releases/download/v${FLUX_VERSION}/crd-schemas.tar.gz" -o flux-schemas.tgz
+          curl -fsSL "https://github.com/prometheus/prometheus/releases/download/v${PROMETHEUS_VERSION}/prometheus-${PROMETHEUS_VERSION}.linux-amd64.tar.gz" -o prometheus.tgz
           printf '%s  %s\n' \
             "$KUSTOMIZE_SHA256" kustomize.tgz \
             "$KUBECONFORM_SHA256" kubeconform.tgz \
-            "$FLUX_SCHEMAS_SHA256" flux-schemas.tgz | sha256sum -c -
+            "$FLUX_SCHEMAS_SHA256" flux-schemas.tgz \
+            "$PROMETHEUS_SHA256" prometheus.tgz | sha256sum -c -
           mkdir bin flux-schemas
           tar -xzf kustomize.tgz -C bin kustomize
           tar -xzf kubeconform.tgz -C bin kubeconform
           tar -xzf flux-schemas.tgz -C flux-schemas
+          tar -xzf prometheus.tgz -C bin --strip-components=1 "prometheus-${PROMETHEUS_VERSION}.linux-amd64/promtool"
           echo "$PWD/bin" >> "$GITHUB_PATH"
       - name: Render and check
         run: |
@@ -88,6 +98,19 @@ jobs:
             kc "$d"*.yaml || failed="$failed $d"
           done
           if [ -n "$failed" ]; then echo "FAILED:$failed"; exit 1; fi
+      - name: Alert rules
+        run: |
+          python3 -c 'import yaml' 2>/dev/null || sudo apt-get install -y -q python3-yaml
+          rules="$RUNNER_TEMP/rules"
+          # Every PrometheusRule as a rule file, <namespace>-<name>.yaml
+          for k in $(find gitops -name kustomization.yaml | sort); do
+            kustomize build "$(dirname "$k")"
+            echo "---"
+          done | python3 .github/scripts/extract-rules.py "$rules"
+          promtool check rules "$rules"/*.yaml
+          cp gitops/tests/rules/*.test.yaml "$rules"/
+          cd "$rules"
+          promtool test rules ./*.test.yaml
       - name: Check postBuild substitution
         run: |
           python3 -c 'import yaml' 2>/dev/null || sudo apt-get install -y -q python3-yaml

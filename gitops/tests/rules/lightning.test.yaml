@@ -1,0 +1,146 @@
+###
+# Unit tests for the Lightning alerts (gitops/workloads/lightning/monitoring.yaml),
+# run by promtool in CI (.github/workflows/gitops.yml). The rule file is that
+# PrometheusRule's spec, written by .github/scripts/extract-rules.py.
+#
+# Not read by Flux: gitops/tests has no kustomization.yaml and no Kustomization
+# points here.
+###
+rule_files:
+  - lightning-lightning.yaml
+
+evaluation_interval: 1m
+
+tests:
+  # A node whose pod is gone has no cln_up at all. It must still alert, while
+  # the other node keeps reporting (ClnDown missed this before #46).
+  - name: node gone
+    interval: 1m
+    input_series:
+      - series: 'cln_up{namespace="lightning", node="alice"}'
+        values: '1x10'
+      - series: 'kube_statefulset_status_replicas_ready{namespace="lightning", statefulset="cln-alice"}'
+        values: '1x10'
+      - series: 'kube_statefulset_status_replicas_ready{namespace="lightning", statefulset="cln-bob"}'
+        values: '0x10'
+    alert_rule_test:
+      - eval_time: 1m # not yet: for 2m
+        alertname: ClnDown
+        exp_alerts: []
+      - eval_time: 4m
+        alertname: ClnDown
+        exp_alerts:
+          - exp_labels:
+              severity: warning
+              namespace: lightning
+              statefulset: cln-bob
+              node: bob
+            exp_annotations:
+              summary: "Core Lightning node bob does not answer on its RPC"
+              description: "kubectl -n lightning logs cln-bob-0 -c lightningd --tail=50"
+
+  # The pod is up but the node's RPC does not answer.
+  - name: rpc down
+    interval: 1m
+    input_series:
+      - series: 'cln_up{namespace="lightning", node="alice"}'
+        values: '0x10'
+      - series: 'kube_statefulset_status_replicas_ready{namespace="lightning", statefulset="cln-alice"}'
+        values: '1x10'
+    alert_rule_test:
+      - eval_time: 4m
+        alertname: ClnDown
+        exp_alerts:
+          - exp_labels:
+              severity: warning
+              namespace: lightning
+              node: alice
+            exp_annotations:
+              summary: "Core Lightning node alice does not answer on its RPC"
+              description: "kubectl -n lightning logs cln-alice-0 -c lightningd --tail=50"
+
+  # Both nodes up, following the chain, metrics fresh, channel normal: quiet.
+  - name: all well
+    interval: 1m
+    input_series:
+      - series: 'cln_up{namespace="lightning", node="alice"}'
+        values: '1x120'
+      - series: 'cln_up{namespace="lightning", node="bob"}'
+        values: '1x120'
+      - series: 'kube_statefulset_status_replicas_ready{namespace="lightning", statefulset="cln-alice"}'
+        values: '1x120'
+      - series: 'kube_statefulset_status_replicas_ready{namespace="lightning", statefulset="cln-bob"}'
+        values: '1x120'
+      - series: 'cln_chain_blocks{node="alice"}'
+        values: '100+1x120'
+      - series: 'cln_blockheight{node="alice"}'
+        values: '100+1x120'
+      - series: 'cln_channels{node="alice", state="CHANNELD_NORMAL"}'
+        values: '1x120'
+      - series: 'cln_channels{node="alice", state="ONCHAIN"}'
+        values: '0x120'
+      - series: 'cln_channels_disconnected{node="alice"}'
+        values: '0x120'
+      - series: 'lnwatch_last_run_timestamp_seconds{node="alice"}'
+        values: '0+60x120' # written every minute: always now
+    alert_rule_test:
+      - { eval_time: 100m, alertname: ClnDown, exp_alerts: [] }
+      - { eval_time: 100m, alertname: ClnBehindChain, exp_alerts: [] }
+      - { eval_time: 100m, alertname: ClnChannelNotNormal, exp_alerts: [] }
+      - { eval_time: 100m, alertname: ClnChannelPeerDisconnected, exp_alerts: [] }
+      - { eval_time: 100m, alertname: LnwatchStale, exp_alerts: [] }
+
+  - name: behind the chain
+    interval: 1m
+    input_series:
+      - series: 'cln_chain_blocks{node="bob"}'
+        values: '110x20'
+      - series: 'cln_blockheight{node="bob"}'
+        values: '100x20'
+    alert_rule_test:
+      - eval_time: 5m # not yet: for 10m
+        alertname: ClnBehindChain
+        exp_alerts: []
+      - eval_time: 15m
+        alertname: ClnBehindChain
+        exp_alerts:
+          - exp_labels: { severity: warning, node: bob }
+            exp_annotations:
+              summary: "Core Lightning node bob is 10 blocks behind bitcoind"
+
+  # A channel stuck outside CHANNELD_NORMAL; a peer disconnected.
+  - name: channel trouble
+    interval: 1m
+    input_series:
+      - series: 'cln_channels{node="alice", state="CHANNELD_AWAITING_LOCKIN"}'
+        values: '1x100'
+      - series: 'cln_channels_disconnected{node="alice"}'
+        values: '1x100'
+    alert_rule_test:
+      - { eval_time: 60m, alertname: ClnChannelNotNormal, exp_alerts: [] }
+      - eval_time: 95m
+        alertname: ClnChannelNotNormal
+        exp_alerts:
+          - exp_labels: { severity: info, node: alice }
+            exp_annotations:
+              summary: "1 channel(s) of alice not in CHANNELD_NORMAL for 90 minutes"
+      - eval_time: 15m
+        alertname: ClnChannelPeerDisconnected
+        exp_alerts:
+          - exp_labels: { severity: warning, node: alice }
+            exp_annotations:
+              summary: "1 channel peer(s) of alice disconnected for 10 minutes"
+
+  # lnwatch stopped writing at t=0.
+  - name: lnwatch stale
+    interval: 1m
+    input_series:
+      - series: 'lnwatch_last_run_timestamp_seconds{node="bob"}'
+        values: '0x10'
+    alert_rule_test:
+      - eval_time: 8m
+        alertname: LnwatchStale
+        exp_alerts:
+          - exp_labels: { severity: info, node: bob }
+            exp_annotations:
+              summary: "lnwatch of bob has not written metrics for 2 minutes"

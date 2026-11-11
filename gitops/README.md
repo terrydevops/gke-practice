@@ -4,7 +4,8 @@ Terraform stops at the cluster boundary. From here on, git is the source of trut
 the cluster to it. Nothing in this directory has run on a cluster yet: it is checked with
 `kustomize build` and `flux build --dry-run` only. In CI, `.github/workflows/gitops.yml` renders every kustomize
 directory and checks each object with kubeconform (Kubernetes 1.36, Flux and CRDs-catalog schemas,
-unknown fields rejected).
+unknown fields rejected), then parses every PrometheusRule with promtool and runs the alert unit tests
+in `tests/rules` (`promtool test rules`; a test names its rule file `<namespace>-<name>.yaml`).
 
 ## Layout
 
