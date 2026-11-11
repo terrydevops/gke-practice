@@ -12,58 +12,102 @@ cluster, 24 resources) has been planned but never applied.
 
 ```mermaid
 flowchart TB
+  user["Browser<br/>public visitor"]
+  op["Operator<br/>kubectl, port-forward"]
+
+  subgraph cf["Cloudflare"]
+    worker["Worker<br/>*.workers.dev"]
+    tunnel["Tunnel<br/>no public hostname"]
+  end
+
   subgraph gh["GitHub"]
     ci["Actions<br/>CI checks, terraform plan/apply,<br/>rebuild: check.sh + Lightning e2e"]
     repo["gitops/<br/>Dependabot keeps images current"]
   end
-  op["Operator<br/>kubectl, port-forward"]
 
   subgraph gcp["GCP project"]
     wif["Workload Identity Federation<br/>main only: apply SA"]
-    sm["Secret Manager"]
+    sm["Secret Manager<br/>tunnel token, RPC password,<br/>Grafana password, ntfy URL"]
 
-    subgraph gke["GKE Standard, private nodes, Cloud NAT, Spot e2-standard-2 x1-3"]
-      flux["Flux"]
-      eso["External Secrets"]
-      dns["DNS<br/>node-local cache"]
-
-      subgraph ln["namespace lightning: PSS restricted, default-deny"]
-        alice["Core Lightning: alice<br/>lightningd v26.06.10 + lnwatch"]
-        bob["Core Lightning: bob<br/>lightningd v26.06.10 + lnwatch"]
-        btc["bitcoind<br/>Bitcoin Core 32.1, regtest"]
+    subgraph gke["GKE Standard: private nodes, Cloud NAT egress, Spot e2-standard-2 x1-3"]
+      subgraph platform["platform"]
+        flux["Flux<br/>reconciles all of gitops/"]
+        eso["External Secrets"]
+        dns["DNS<br/>node-local cache"]
+        tools["Headlamp, Chaos Mesh,<br/>CloudNativePG, Reloader"]
       end
 
       subgraph mon["monitoring"]
         prom["Prometheus<br/>+ kube-state-metrics"]
+        bb["blackbox probes<br/>Pyrra SLOs"]
+        logs["Alloy → Loki<br/>pod logs"]
         graf["Grafana"]
         am["Alertmanager"]
       end
 
-      other["also: esplora, esplora-liquid,<br/>tenant apps, cloudflared"]
+      cfd["cloudflared<br/>dials out, no inbound"]
+
+      subgraph tenants["tenants"]
+        explorer["explorer<br/>nginx: Esplora UI + /api proxy"]
+        whoami["whoami<br/>dev, staging"]
+      end
+
+      subgraph esp["esplora: Bitcoin regtest"]
+        e1["nginx → electrs → bitcoind<br/>+ miner, chainwatch"]
+      end
+
+      subgraph espl["esplora-liquid: Liquid regtest"]
+        e2["nginx → electrs → elementsd<br/>+ miner, chainwatch"]
+      end
+
+      subgraph ln["lightning: PSS restricted, default-deny"]
+        alice["Core Lightning: alice<br/>lightningd v26.06.10 + lnwatch"]
+        bob["Core Lightning: bob<br/>lightningd v26.06.10 + lnwatch"]
+        btc["bitcoind<br/>Bitcoin Core 32.1, its own regtest chain"]
+      end
     end
   end
 
   ntfy["ntfy<br/>phone"]
 
+  user -->|HTTPS| worker
+  worker -->|VPC Service| tunnel
+  cfd -->|"outbound TCP 7844"| tunnel
+  cfd -->|":8080"| explorer
+  explorer -->|"/regtest/api"| e1
+  explorer -->|"/liquidregtest/api"| e2
+
   ci -->|"OIDC, terraform apply"| wif
   wif -->|creates| gke
   repo -->|pulls| flux
   op -->|DNS endpoint| gke
-  flux -->|applies| ln
   sm -->|reads| eso
+  eso -->|tunnel token| cfd
   eso -->|RPC password| ln
+
   alice <==>|"channel :9735, 1,000,000 sat"| bob
   alice -->|RPC :18443| btc
   bob -->|RPC :18443| btc
-  ln -.->|DNS :53| dns
-  prom -->|"scrape :9102"| ln
+
+  prom -->|scrape| ln
+  prom -->|scrape| esp
+  prom -->|scrape| espl
+  bb -->|probe| esp
+  bb -->|probe| whoami
   graf -->|queries| prom
+  graf -->|queries| logs
   prom -->|alerts| am
   am -->|webhook| ntfy
 ```
 
 Terraform builds the GCP side from GitHub Actions; only `main` can impersonate the apply account.
-Flux then reconciles everything in the cluster from `gitops/`.
+Flux then reconciles everything in the cluster from `gitops/`. Two regtest chain stacks run side by
+side: Esplora (Bitcoin and Liquid) behind a public explorer, and Lightning on a chain of its own.
+
+The explorer is public without a load balancer, public IP or inbound rule: cloudflared dials out to
+a Cloudflare Tunnel, a Worker on `*.workers.dev` forwards to it, and the explorer's nginx serves the
+Esplora UI and proxies `/regtest/api` and `/liquidregtest/api` to the two chains
+(details in [docs/esplora-explorer.md](docs/esplora-explorer.md)).
 
 The Lightning workload (details in [gitops/README.md](gitops/README.md#lightning)):
 
