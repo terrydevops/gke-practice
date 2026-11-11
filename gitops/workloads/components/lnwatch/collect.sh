@@ -7,6 +7,10 @@
 #
 # Env: NODE (label), RPC_PASSWORD (bitcoind), INTERVAL (default 15)
 set -u
+# PID 1 of its container: a signal without a handler is ignored there, so
+# without this trap the pod waits out its whole grace period to stop. The
+# sleep runs in the background so that the trap fires at once, not after it.
+trap 'exit 0' TERM INT
 OUT=/metrics/ln.prom
 INTERVAL=${INTERVAL:-15}
 CLI=(lightning-cli --lightning-dir=/data -F)
@@ -63,5 +67,6 @@ while :; do
 
   m lnwatch_last_run_timestamp_seconds "$(date +%s)"
   mv "$tmp" "$OUT"
-  sleep "$INTERVAL"
+  sleep "$INTERVAL" &
+  wait $!
 done
