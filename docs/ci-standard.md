@@ -70,7 +70,7 @@ Profiles: Baseline, IaC, GitOps.
 | ID | Where |
 |---|---|
 | B1, B2, B6 | every workflow |
-| B3 | `.github/dependabot.yml`: github-actions and the three Terraform roots, 7-day cooldown. Dependabot secrets hold the plan secrets, not `APPLY_SA`, so its PRs plan `envs/nonprod`; a bump in `bootstrap/` is planned by hand before merge |
+| B3 | `.github/dependabot.yml`: github-actions, the three Terraform roots and the images pinned in the gitops manifests (one `docker` entry per directory; images in HelmRelease values are not covered), 7-day cooldown. Dependabot secrets hold the plan secrets, not `APPLY_SA`, so its PRs plan `envs/nonprod`; a bump in `bootstrap/` is planned by hand before merge |
 | B4, B10, B12 | every workflow. Pushes cancel each other's checks; a Run workflow has its own group, and `terraform-apply` serialises apply and destroy |
 | B5, B7, B8, B9 | `security.yml`: `lint` and `secrets` jobs. B9 is `.github/scripts/hygiene.sh`, attribution allowed |
 | B11 | `security.yml` (Monday 04:23 UTC) and `drift.yml` (Monday 04:41 UTC) |

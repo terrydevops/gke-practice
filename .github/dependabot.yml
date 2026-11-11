@@ -18,3 +18,20 @@ updates:
       interval: weekly
     cooldown:
       default-days: 7
+  # Image tags and digests in the Kubernetes manifests. One entry per
+  # directory that holds a manifest with a pinned image (not recursive).
+  # Images in HelmRelease values (infrastructure/controllers) are not read.
+  - package-ecosystem: docker
+    directories:
+      - /gitops/workloads/lightning
+      - /gitops/workloads/lightning/cln
+      - /gitops/workloads/esplora
+      - /gitops/workloads/esplora-liquid
+      - /gitops/workloads/cloudflared
+      - /gitops/apps/base/explorer
+      - /gitops/chaos/load
+      - /gitops/infrastructure/configs
+    schedule:
+      interval: weekly
+    cooldown:
+      default-days: 7
