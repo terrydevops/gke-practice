@@ -8,6 +8,10 @@
 # Env: CHAIN (label), CLI (the node's CLI with -conf and -datadir),
 #      API (REST base URL), NATIVE_ASSET (Liquid only: label in dumpassetlabels)
 set -u
+# PID 1 of its container: a signal without a handler is ignored there, so
+# without this trap the pod waits out its whole grace period to stop. The
+# sleep runs in the background so that the trap fires at once, not after it.
+trap 'exit 0' TERM INT
 OUT=/metrics/chain.prom
 INTERVAL=${INTERVAL:-15}
 
@@ -66,5 +70,6 @@ while :; do
 
   m chainwatch_last_run_timestamp_seconds "$(date +%s)"
   mv "$tmp" "$OUT"
-  sleep "$INTERVAL"
+  sleep "$INTERVAL" &
+  wait $!
 done
