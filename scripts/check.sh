@@ -60,11 +60,18 @@ for o in json.load(sys.stdin)["items"]:
     if have < want:
         print("%s/%s %d/%d" % (o["metadata"]["namespace"], o["metadata"]["name"], have, want))'
 }
-check_chains() { # both chains past the 100 blocks run.sh mines, and served by the API
+check_chains() { # both esplora chains past the 100 blocks run.sh mines and served by the API; the Lightning nodes on their bitcoind's tip
   for ns in esplora esplora-liquid; do
     # shellcheck disable=SC2016 # $API is the container's own variable
     h=$(k -n "$ns" exec esplora-0 -c chainwatch -- sh -c 'curl -fsS -m 5 "$API/blocks/tip/height"' 2>/dev/null)
     case "$h" in ''|*[!0-9]*) echo "$ns: API not answering" ;; *) [ "$h" -ge 100 ] || echo "$ns: height $h" ;; esac
+  done
+  # within a block: the miner can add one between the two reads
+  tip=$(k -n lightning exec bitcoind-0 -c bitcoind -- bitcoin-cli -regtest -datadir=/data getblockcount 2>/dev/null)
+  case "$tip" in ''|*[!0-9]*) echo "lightning: bitcoind not answering"; return ;; esac
+  for n in alice bob; do
+    h=$(k -n lightning exec "cln-$n-0" -c lightningd -- lightning-cli --lightning-dir=/data -F getinfo 2>/dev/null | sed -n 's/^blockheight=//p')
+    case "$h" in ''|*[!0-9]*) echo "lightning: $n not answering" ;; *) [ "$h" -ge $((tip - 1)) ] || echo "lightning: $n at $h, bitcoind at $tip" ;; esac
   done
 }
 check_targets() { # every Prometheus target up

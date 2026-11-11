@@ -79,7 +79,7 @@ Profiles: Baseline, IaC, GitOps.
 | T5 | `.github/scripts/plan-summary.sh`, used by plan, destroy and drift |
 | T6 | `terraform.yml`: the plan job uploads `tfplan` (Run workflow with `action=apply` only, kept one day); apply runs that file |
 | T8 | `drift.yml`. An empty state (torn down) passes with a notice |
-| K1, K2 | `gitops.yml` |
+| K1, K2 | `gitops.yml`. It also runs C3's domain tests for alerts: promtool `check rules` on every PrometheusRule and the unit tests in `gitops/tests/rules` |
 
 ### Accepted gaps
 
