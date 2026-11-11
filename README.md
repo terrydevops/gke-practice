@@ -72,7 +72,7 @@ flowchart TB
 
   user -->|HTTPS| worker
   worker -->|VPC Service| tunnel
-  cfd -->|"outbound TCP 7844"| tunnel
+  tunnel -->|"requests, over the connection<br/>cloudflared dialed out on TCP 7844"| cfd
   cfd -->|":8080"| explorer
   explorer -->|"/regtest/api"| e1
   explorer -->|"/liquidregtest/api"| e2
