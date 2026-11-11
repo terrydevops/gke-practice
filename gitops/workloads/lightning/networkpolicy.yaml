@@ -2,7 +2,7 @@
 # Closed both ways, then opened per path:
 #   lightning nodes -> bitcoind  RPC 18443, ZMQ 28332-28333 (lnd, phase 2)
 #   lightning nodes <-> each other  9735, the Lightning peer port
-#   lightning nodes -> kube-dns  they reach bitcoind and each other by name
+#   lightning nodes -> DNS  they reach bitcoind and each other by name
 #   Prometheus -> lnwatch 9102
 # Nothing outside the namespace reaches bitcoind or a node; the RPC socket of
 # a CLN node is a unix socket inside its pod.
@@ -82,7 +82,12 @@ spec:
               lightning-node: "true"
       ports:
         - { protocol: TCP, port: 9735 }
+    # DNS. Pods ask the NodeLocal DNSCache on their node (169.254.20.10, in
+    # the host network, so no pod selector matches it); it asks kube-dns.
+    # kube-dns is open too, for when the cache is not there.
     - to:
+        - ipBlock:
+            cidr: 169.254.20.10/32
         - namespaceSelector:
             matchLabels:
               kubernetes.io/metadata.name: kube-system

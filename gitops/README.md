@@ -127,7 +127,7 @@ Pod Security `restricted`: non-root, read-only root filesystem, no capabilities,
 - **The bitcoind password** comes from Secret Manager (`lightning-bitcoind-rpc`) through ESO, and
   goes into each process's config file at start, not its arguments.
 - **Network:** closed both ways, then nodes to bitcoind (RPC, ZMQ), nodes to each other (9735), nodes
-  to kube-dns, Prometheus to :9102. bitcoind publishes ZMQ for lnd, the next node to add.
+  to DNS (the node-local cache and kube-dns), Prometheus to :9102. bitcoind publishes ZMQ for lnd, the next node to add.
 - **Metrics and alerts:** `components/lnwatch` (lightning-cli, flat output) on :9102; dashboard
   "Lightning (Core Lightning)"; `ClnDown`, `ClnBehindChain`, `ClnChannelNotNormal`,
   `ClnChannelPeerDisconnected`.
