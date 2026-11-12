@@ -693,7 +693,7 @@
         "type": "prometheus",
         "uid": "${datasource}"
       },
-      "description": "Blocks left before the node's first pending HTLC expires. ClnHtlcNearExpiry fires under 4.",
+      "description": "Blocks left before the node's first pending HTLC expires; \"none\" when nothing is pending. ClnHtlcNearExpiry fires under 4.",
       "gridPos": {
         "h": 4,
         "w": 8,
@@ -703,7 +703,7 @@
       "targets": [
         {
           "refId": "A",
-          "expr": "cln_htlc_expiry_blocks",
+          "expr": "cln_htlc_expiry_blocks or on (node) (cln_up * 0 + 1e9)",
           "datasource": {
             "type": "prometheus",
             "uid": "${datasource}"
@@ -742,7 +742,18 @@
               }
             ]
           },
-          "noValue": "none"
+          "mappings": [
+            {
+              "type": "value",
+              "options": {
+                "1000000000": {
+                  "text": "none",
+                  "color": "green",
+                  "index": 0
+                }
+              }
+            }
+          ]
         },
         "overrides": []
       }
