@@ -131,7 +131,7 @@ Pod Security `restricted`: non-root, read-only root filesystem, no capabilities,
   to DNS (the node-local cache and kube-dns), Prometheus to :9102. bitcoind publishes ZMQ for lnd, the next node to add.
 - **Metrics and alerts:** `components/lnwatch` (lightning-cli, flat output) on :9102; dashboard
   "Lightning (Core Lightning)"; `ClnDown`, `ClnBehindChain`, `ClnChannelNotNormal`,
-  `ClnChannelPeerDisconnected`.
+  `ClnChannelForceClosed`, `ClnChannelPeerDisconnected`, `ClnHtlcStuck`, `ClnHtlcNearExpiry`.
 
 The password, once (the secret exists after `bootstrap/ci` is applied):
 
