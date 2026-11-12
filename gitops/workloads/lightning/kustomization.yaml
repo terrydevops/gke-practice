@@ -13,3 +13,12 @@ resources:
   - cln-alice
   - cln-bob
   - monitoring.yaml
+patches:
+  # The chains' shared quota allows 5 PVCs; here that is all used: bitcoind 1,
+  # and 2 per Core Lightning node (data, backup). Room for an LND node
+  # (phase 2) and one spare.
+  - target: { kind: ResourceQuota, name: workload-quota }
+    patch: |
+      - op: replace
+        path: /spec/hard/persistentvolumeclaims
+        value: "8"
