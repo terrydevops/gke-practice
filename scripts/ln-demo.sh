@@ -57,9 +57,9 @@ balances() {
       "$(cli "$n" listfunds | awk -F= '
           /^outputs\[[0-9]+\]\.amount_msat=/ { split($1, a, /[][]/); amt[a[2]] = $2 }
           /^outputs\[[0-9]+\]\.status=/      { split($1, a, /[][]/); st[a[2]] = $2 }
-          END { for (i in amt) if (st[i] == "confirmed") s += amt[i]; printf "%d", s / 1000 }')" \
+          END { for (i in amt) if (st[i] == "confirmed") s += amt[i]; printf "%.0f", int(s / 1000) }')" \
       "$(cli "$n" listfunds | sed -n 's/^channels\[[0-9]*\]\.our_amount_msat=//p' |
-        awk '{ s += $1 } END { printf "%d", s / 1000 }')"
+        awk '{ s += $1 } END { printf "%.0f", int(s / 1000) }')"
   done
 }
 
