@@ -81,6 +81,12 @@ tests:
         values: '0x120'
       - series: 'cln_channels_disconnected{node="alice"}'
         values: '0x120'
+      - series: 'cln_htlcs{node="alice", direction="in"}'
+        values: '0x120'
+      - series: 'cln_htlcs{node="alice", direction="out"}'
+        values: '0x120'
+      - series: 'cln_channels_force_closed{node="alice"}'
+        values: '0x120'
       - series: 'lnwatch_last_run_timestamp_seconds{node="alice"}'
         values: '0+60x120' # written every minute: always now
     alert_rule_test:
@@ -89,6 +95,9 @@ tests:
       - { eval_time: 100m, alertname: ClnChannelNotNormal, exp_alerts: [] }
       - { eval_time: 100m, alertname: ClnChannelPeerDisconnected, exp_alerts: [] }
       - { eval_time: 100m, alertname: LnwatchStale, exp_alerts: [] }
+      - { eval_time: 100m, alertname: ClnChannelForceClosed, exp_alerts: [] }
+      - { eval_time: 100m, alertname: ClnHtlcStuck, exp_alerts: [] }
+      - { eval_time: 100m, alertname: ClnHtlcNearExpiry, exp_alerts: [] }
 
   - name: behind the chain
     interval: 1m
@@ -108,7 +117,7 @@ tests:
             exp_annotations:
               summary: "Core Lightning node bob is 10 blocks behind bitcoind"
 
-  # A channel stuck outside CHANNELD_NORMAL; a peer disconnected.
+  # A channel stuck in opening; a peer disconnected.
   - name: channel trouble
     interval: 1m
     input_series:
@@ -123,13 +132,78 @@ tests:
         exp_alerts:
           - exp_labels: { severity: info, node: alice }
             exp_annotations:
-              summary: "1 channel(s) of alice not in CHANNELD_NORMAL for 90 minutes"
+              summary: "1 channel(s) of alice still opening or closing after 90 minutes"
       - eval_time: 15m
         alertname: ClnChannelPeerDisconnected
         exp_alerts:
           - exp_labels: { severity: warning, node: alice }
             exp_annotations:
               summary: "1 channel peer(s) of alice disconnected for 10 minutes"
+
+  # A channel both sides agreed to close stays listed as ONCHAIN: quiet.
+  - name: mutual close
+    interval: 1m
+    input_series:
+      - series: 'cln_channels{node="alice", state="CHANNELD_NORMAL"}'
+        values: '0x100'
+      - series: 'cln_channels{node="alice", state="ONCHAIN"}'
+        values: '1x100'
+      - series: 'cln_channels_force_closed{node="alice"}'
+        values: '0x100'
+    alert_rule_test:
+      - { eval_time: 95m, alertname: ClnChannelNotNormal, exp_alerts: [] }
+      - { eval_time: 95m, alertname: ClnChannelForceClosed, exp_alerts: [] }
+
+  # One side closed alone: at once, no waiting.
+  - name: force close
+    interval: 1m
+    input_series:
+      - series: 'cln_channels{node="alice", state="ONCHAIN"}'
+        values: '1x100'
+      - series: 'cln_channels_force_closed{node="alice"}'
+        values: '1x100'
+    alert_rule_test:
+      - eval_time: 1m
+        alertname: ClnChannelForceClosed
+        exp_alerts:
+          - exp_labels: { severity: warning, node: alice }
+            exp_annotations:
+              summary: "1 channel(s) of alice closed unilaterally"
+              description: "kubectl -n lightning exec cln-alice-0 -c lightningd -- lightning-cli --lightning-dir=/data listpeerchannels"
+      - { eval_time: 95m, alertname: ClnChannelNotNormal, exp_alerts: [] }
+
+  # An HTLC that does not settle, one out and one in.
+  - name: htlc stuck
+    interval: 1m
+    input_series:
+      - series: 'cln_htlcs{node="alice", direction="out"}'
+        values: '1x30'
+      - series: 'cln_htlcs{node="alice", direction="in"}'
+        values: '1x30'
+    alert_rule_test:
+      - { eval_time: 10m, alertname: ClnHtlcStuck, exp_alerts: [] }
+      - eval_time: 20m
+        alertname: ClnHtlcStuck
+        exp_alerts:
+          - exp_labels: { severity: warning, node: alice }
+            exp_annotations:
+              summary: "2 HTLC(s) of alice pending for 15 minutes"
+
+  # alice's HTLC is 3 blocks from its expiry, bob's 8.
+  - name: htlc near expiry
+    interval: 1m
+    input_series:
+      - series: 'cln_htlc_expiry_blocks{node="alice"}'
+        values: '3x5'
+      - series: 'cln_htlc_expiry_blocks{node="bob"}'
+        values: '8x5'
+    alert_rule_test:
+      - eval_time: 1m
+        alertname: ClnHtlcNearExpiry
+        exp_alerts:
+          - exp_labels: { severity: warning, node: alice }
+            exp_annotations:
+              summary: "An HTLC of alice expires in 3 block(s)"
 
   # lnwatch stopped writing at t=0.
   - name: lnwatch stale

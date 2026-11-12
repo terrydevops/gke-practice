@@ -119,8 +119,9 @@ The Lightning workload (details in [gitops/README.md](gitops/README.md#lightning
   and clnrest is off. The namespace denies all traffic except the paths drawn above.
 - **Metrics** come from `lnwatch`, a sidecar that reads the node through `lightning-cli`. Its
   metrics are prefixed `cln_`, so an lnd node added later (`lnd_`, from lndmon) does not mix with them.
-  Five alerts (`ClnDown`, `ClnBehindChain`, `ClnChannelNotNormal`, `ClnChannelPeerDisconnected`,
-  `LnwatchStale`) are unit-tested with promtool in CI.
+  Eight alerts (`ClnDown`, `ClnBehindChain`, `ClnChannelNotNormal`, `ClnChannelForceClosed`,
+  `ClnChannelPeerDisconnected`, `ClnHtlcStuck`, `ClnHtlcNearExpiry`, `LnwatchStale`) are
+  unit-tested with promtool in CI.
 
 ## Layout
 

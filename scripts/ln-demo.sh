@@ -50,7 +50,13 @@ wait_for() {
   echo "timed out waiting for $what" >&2
   return 1
 }
-channel_state() { cli alice listpeerchannels "$bob_id" | field 'channels\[0\]\.state'; }
+# The state of each channel alice -> bob that is not closed yet, one a line.
+# A closed channel stays listed as ONCHAIN for a while, next to a new one.
+channel_states() {
+  cli alice listpeerchannels "$bob_id" | sed -n 's/^channels\[[0-9]*\]\.state=//p' | grep -vx ONCHAIN || true
+}
+# "closed" once no channel is left that is not on chain.
+all_closed() { [ -n "$(channel_states)" ] || echo closed; }
 balances() {
   for n in alice bob; do
     printf '%-6s on chain %10s sat   in channels %10s sat\n' "$n" \
@@ -67,7 +73,7 @@ bob_id=$(cli bob getinfo | field id)
 
 case "$step" in
 open)
-  if [ "$(channel_state)" = CHANNELD_NORMAL ]; then
+  if channel_states | grep -x CHANNELD_NORMAL >/dev/null; then
     echo "a channel alice -> bob is already open"
   else
     echo "1/4 fund alice: 101 blocks to her address (coinbase needs 100 to mature)"
@@ -84,7 +90,7 @@ open)
 
     echo "4/4 confirm it (6 blocks)"
     mine 6
-    wait_for "CHANNELD_NORMAL" CHANNELD_NORMAL channel_state
+    wait_for "CHANNELD_NORMAL" CHANNELD_NORMAL channel_states
     echo "channel open"
   fi
   ;;
@@ -97,7 +103,7 @@ pay)
 close)
   cli alice close "$bob_id" | field type | sed 's/^/close type: /'
   mine 1
-  wait_for "the close on chain" 'ONCHAIN\|CLOSINGD_COMPLETE' channel_state
+  wait_for "the close on chain" closed all_closed
   echo "channel closed"
   ;;
 esac

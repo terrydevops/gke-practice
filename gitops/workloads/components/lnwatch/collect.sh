@@ -52,6 +52,46 @@ while :; do
     done
     m cln_channels_disconnected "$(echo "$funds" | grep -c '^channels\[[0-9]*\]\.connected=false$')"
 
+    # Pending HTLCs, force closes and each open channel's usable balance,
+    # from the channels' own list. A close that went through
+    # CLOSINGD_COMPLETE was agreed by both sides; one that reached the chain
+    # without it was unilateral. An HTLC's expiry is a block height.
+    "${CLI[@]}" listpeerchannels | awk -F= -v node="$NODE" \
+        -v tip="$(echo "$info" | field blockheight)" '
+      function chan() { split($1, a, /[][]/); return a[2] }
+      function htlc() { split($1, a, /[][]/); return a[2] "/" a[4] }
+      /^channels\[[0-9]+\]\.htlcs\[[0-9]+\]\.direction=/   { dir[htlc()] = $2 }
+      /^channels\[[0-9]+\]\.htlcs\[[0-9]+\]\.amount_msat=/ { amt[htlc()] = $2 }
+      /^channels\[[0-9]+\]\.htlcs\[[0-9]+\]\.expiry=/      { due[htlc()] = $2 }
+      /^channels\[[0-9]+\]\.state=/                        { st[chan()] = $2 }
+      /^channels\[[0-9]+\]\.short_channel_id=/             { scid[chan()] = $2 }
+      /^channels\[[0-9]+\]\.spendable_msat=/               { spend[chan()] = $2 }
+      /^channels\[[0-9]+\]\.receivable_msat=/              { recv[chan()] = $2 }
+      /^channels\[[0-9]+\]\.state_changes\[[0-9]+\]\.new_state=CLOSINGD_COMPLETE$/ { mutual[chan()] = 1 }
+      END {
+        n["in"] = n["out"] = 0
+        for (k in dir) {
+          n[dir[k]]++
+          msat[dir[k]] += amt[k]
+          d = due[k] + 0
+          if (!some || d < first) { first = d; some = 1 }
+        }
+        for (d in n) {
+          printf "cln_htlcs{node=\"%s\",direction=\"%s\"} %d\n", node, d, n[d]
+          printf "cln_htlc_pending_sat{node=\"%s\",direction=\"%s\"} %.0f\n", node, d, int(msat[d] / 1000)
+        }
+        # Blocks until the first pending HTLC expires; absent when there is none.
+        if (some) printf "cln_htlc_expiry_blocks{node=\"%s\"} %d\n", node, first - tip
+        for (c in st) {
+          if (st[c] ~ /^(AWAITING_UNILATERAL|FUNDING_SPEND_SEEN|ONCHAIN)$/ && !(c in mutual)) forced++
+          if (st[c] == "CHANNELD_NORMAL" && c in scid) {
+            printf "cln_channel_spendable_sat{node=\"%s\",short_channel_id=\"%s\"} %.0f\n", node, scid[c], int(spend[c] / 1000)
+            printf "cln_channel_receivable_sat{node=\"%s\",short_channel_id=\"%s\"} %.0f\n", node, scid[c], int(recv[c] / 1000)
+          }
+        }
+        printf "cln_channels_force_closed{node=\"%s\"} %d\n", node, forced
+      }' >> "$tmp"
+
     pays=$("${CLI[@]}" listpays)
     for s in pending complete failed; do
       m cln_payments "$(echo "$pays" | grep -c "^pays\[[0-9]*\]\.status=$s$")" ",status=\"$s\""

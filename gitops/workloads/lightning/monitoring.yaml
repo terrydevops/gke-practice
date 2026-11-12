@@ -51,15 +51,45 @@ spec:
           labels: { severity: warning }
           annotations:
             summary: "Core Lightning node {{ $labels.node }} is {{ $value }} blocks behind bitcoind"
-        # A channel that is not in normal operation for a while: stuck in
-        # opening, closing, or on chain. Opening takes 6 blocks on regtest,
-        # an hour with the miner's 10-minute blocks.
+        # A channel stuck on the way in or on the way out: opening, or a close
+        # that both sides agreed but have not finished. Opening takes 6 blocks
+        # on regtest, an hour with the miner's 10-minute blocks. A closed
+        # channel stays listed as ONCHAIN for a while; that is not this.
         - alert: ClnChannelNotNormal
-          expr: sum by (node) (cln_channels{state!="CHANNELD_NORMAL"}) > 0
+          expr: >-
+            sum by (node) (cln_channels{state=~"CHANNELD_AWAITING_LOCKIN|CHANNELD_SHUTTING_DOWN|CLOSINGD_SIGEXCHANGE|CLOSINGD_COMPLETE"}) > 0
           for: 90m
           labels: { severity: info }
           annotations:
-            summary: "{{ $value }} channel(s) of {{ $labels.node }} not in CHANNELD_NORMAL for 90 minutes"
+            summary: "{{ $value }} channel(s) of {{ $labels.node }} still opening or closing after 90 minutes"
+        # A channel closed by one side alone. Our funds in it are locked for
+        # to_self_delay blocks and its pending HTLCs are settled on chain.
+        # Fires until the node forgets the channel.
+        - alert: ClnChannelForceClosed
+          expr: cln_channels_force_closed > 0
+          labels: { severity: warning }
+          annotations:
+            summary: "{{ $value }} channel(s) of {{ $labels.node }} closed unilaterally"
+            description: >-
+              kubectl -n lightning exec cln-{{ $labels.node }}-0 -c lightningd --
+              lightning-cli --lightning-dir=/data listpeerchannels
+        # An HTLC settles in seconds. One that stays means a node on the
+        # payment's path does not answer.
+        - alert: ClnHtlcStuck
+          expr: sum by (node) (cln_htlcs) > 0
+          for: 15m
+          labels: { severity: warning }
+          annotations:
+            summary: "{{ $value }} HTLC(s) of {{ $labels.node }} pending for 15 minutes"
+        # A new HTLC has at least cltv-final (10) blocks here. With under 4
+        # left it has been pending for 6 or more, and at its expiry the node
+        # goes on chain: the channel is force closed. On mainnet, raise this
+        # with the cltv settings.
+        - alert: ClnHtlcNearExpiry
+          expr: cln_htlc_expiry_blocks < 4
+          labels: { severity: warning }
+          annotations:
+            summary: "An HTLC of {{ $labels.node }} expires in {{ $value }} block(s)"
         # The peer of a channel is not connected: payments over it fail.
         - alert: ClnChannelPeerDisconnected
           expr: cln_channels_disconnected > 0
