@@ -19,7 +19,8 @@ STATES="CHANNELD_AWAITING_LOCKIN CHANNELD_NORMAL CHANNELD_SHUTTING_DOWN CLOSINGD
 # One field of `lightning-cli -F` output (key=value lines), first match.
 field() { sed -n "s/^$1=//p" | head -n 1; }
 # Sum of every value of a field across a list, msat, as satoshis.
-sum_sat() { sed -n "s/^$1=//p" | awk '{ s += $1 } END { printf "%d", s / 1000 }'; }
+# %.0f, not %d: mawk (this image's awk) caps %d at 2^31-1, about 21 BTC.
+sum_sat() { sed -n "s/^$1=//p" | awk '{ s += $1 } END { printf "%.0f", int(s / 1000) }'; }
 
 while :; do
   tmp=$OUT.tmp
@@ -43,7 +44,7 @@ while :; do
     m cln_funds_onchain_sat "$(echo "$funds" | awk -F= '
         /^outputs\[[0-9]+\]\.amount_msat=/ { split($1, a, /[][]/); amt[a[2]] = $2 }
         /^outputs\[[0-9]+\]\.status=/      { split($1, a, /[][]/); st[a[2]] = $2 }
-        END { for (i in amt) if (st[i] == "confirmed") s += amt[i]; printf "%d", s / 1000 }')"
+        END { for (i in amt) if (st[i] == "confirmed") s += amt[i]; printf "%.0f", int(s / 1000) }')"
     m cln_funds_channel_sat "$(echo "$funds" | sum_sat 'channels\[[0-9]*\]\.our_amount_msat')"
     m cln_channel_capacity_sat "$(echo "$funds" | sum_sat 'channels\[[0-9]*\]\.amount_msat')"
     for s in $STATES; do
