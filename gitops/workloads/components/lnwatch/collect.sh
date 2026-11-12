@@ -22,6 +22,8 @@ field() { sed -n "s/^$1=//p" | head -n 1; }
 # %.0f, not %d: mawk (this image's awk) caps %d at 2^31-1, about 21 BTC.
 sum_sat() { sed -n "s/^$1=//p" | awk '{ s += $1 } END { printf "%.0f", int(s / 1000) }'; }
 
+round=0
+books=""
 while :; do
   tmp=$OUT.tmp
   : > "$tmp"
@@ -45,8 +47,14 @@ while :; do
         /^outputs\[[0-9]+\]\.amount_msat=/ { split($1, a, /[][]/); amt[a[2]] = $2 }
         /^outputs\[[0-9]+\]\.status=/      { split($1, a, /[][]/); st[a[2]] = $2 }
         END { for (i in amt) if (st[i] == "confirmed") s += amt[i]; printf "%.0f", int(s / 1000) }')"
-    m cln_funds_channel_sat "$(echo "$funds" | sum_sat 'channels\[[0-9]*\]\.our_amount_msat')"
-    m cln_channel_capacity_sat "$(echo "$funds" | sum_sat 'channels\[[0-9]*\]\.amount_msat')"
+    # Not the channels already closed on chain: the node lists them for 100
+    # more blocks, but their funds are back in the outputs above.
+    live=$(echo "$funds" | awk -F= '
+        /^channels\[[0-9]+\]\./ { split($1, a, /[][]/); line[a[2]] = line[a[2]] $0 "\n" }
+        /^channels\[[0-9]+\]\.state=ONCHAIN$/ { split($1, a, /[][]/); closed[a[2]] = 1 }
+        END { for (i in line) if (!(i in closed)) printf "%s", line[i] }')
+    m cln_funds_channel_sat "$(echo "$live" | sum_sat 'channels\[[0-9]*\]\.our_amount_msat')"
+    m cln_channel_capacity_sat "$(echo "$live" | sum_sat 'channels\[[0-9]*\]\.amount_msat')"
     for s in $STATES; do
       m cln_channels "$(echo "$funds" | grep -c "^channels\[[0-9]*\]\.state=$s$")" ",state=\"$s\""
     done
@@ -91,6 +99,24 @@ while :; do
         }
         printf "cln_channels_force_closed{node=\"%s\"} %d\n", node, forced
       }' >> "$tmp"
+
+    # The node's own books (the bookkeeper plugin): what it earned (credit)
+    # and spent (debit), by the bookkeeper's tag. Every 20th round, kept in
+    # between: the list is the node's whole history.
+    if [ $((round % 20)) -eq 0 ]; then
+      books=$("${CLI[@]}" bkpr-listincome | awk -F= -v node="$NODE" '
+        /^income_events\[[0-9]+\]\.tag=/         { t = $2; seen[t] = 1 }
+        /^income_events\[[0-9]+\]\.credit_msat=/ { credit[t] += $2 }
+        /^income_events\[[0-9]+\]\.debit_msat=/  { debit[t] += $2 }
+        END {
+          for (t in seen) {
+            printf "cln_bkpr_income_sat{node=\"%s\",tag=\"%s\",side=\"credit\"} %.0f\n", node, t, int(credit[t] / 1000)
+            printf "cln_bkpr_income_sat{node=\"%s\",tag=\"%s\",side=\"debit\"} %.0f\n", node, t, int(debit[t] / 1000)
+          }
+        }')
+    fi
+    [ -z "$books" ] || echo "$books" >> "$tmp"
+    round=$((round + 1))
 
     pays=$("${CLI[@]}" listpays)
     for s in pending complete failed; do
