@@ -15,6 +15,9 @@
 # /backup. The wallet is `sqlite3://<main>:<backup>`: lightningd writes every
 # change to both files in the same transaction. A periodic snapshot would not
 # do: restoring a channel state older than the last one is how funds are lost.
+# /backup is a regional disk (infrastructure/configs/storageclass.yaml): kept
+# in two zones, synchronously, so the same holds for the copy that outlives
+# the zone. 10Gi is the smallest such disk.
 #
 # The bitcoind password goes into the node's config file (mode 600) at start,
 # not into the arguments.
@@ -187,6 +190,7 @@ spec:
         name: backup
       spec:
         accessModes: ["ReadWriteOnce"]
+        storageClassName: regional-rwo
         resources:
           requests:
-            storage: 1Gi
+            storage: 10Gi
