@@ -92,6 +92,7 @@ open)
     mine 6
     wait_for "CHANNELD_NORMAL" CHANNELD_NORMAL channel_states
     echo "channel open"
+    echo "the nodes' channel lists changed: run scripts/ln-backup.sh alice, then bob"
   fi
   ;;
 pay)

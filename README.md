@@ -115,6 +115,9 @@ The Lightning workload (details in [gitops/README.md](gitops/README.md#lightning
   copies could sign different channel states, and an old state broadcast loses the channel.
 - **Synchronous backup, not snapshots.** The wallet is `sqlite3://<main>:<backup>`, written to both
   disks in one transaction.
+- **Recovery was drilled.** Each node's `hsm_secret` and channel list are also kept outside the
+  cluster, and a node was rebuilt from them after both of its disks were deleted
+  ([docs/lightning-recovery.md](docs/lightning-recovery.md)).
 - **Nothing exposed.** The JSON-RPC is a unix socket inside the pod, gRPC listens on 127.0.0.1 only,
   and clnrest is off. The namespace denies all traffic except the paths drawn above.
 - **Metrics** come from `lnwatch`, a sidecar that reads the node through `lightning-cli`. Its
