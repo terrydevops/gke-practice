@@ -116,3 +116,20 @@ resource "google_secret_manager_secret_iam_member" "lightning_bitcoind_rpc" {
   role      = "roles/secretmanager.secretAccessor"
   member    = "${local.ksa_principal}/ns/lightning/sa/lightning-secrets"
 }
+
+# Off-cluster copies of what a Core Lightning node cannot be rebuilt without
+# (docs/lightning-recovery.md): its hsm_secret, the root of every key, and
+# emergency.recover, the list of its channels. scripts/ln-backup.sh adds the
+# versions. No binding: nothing in the cluster reads or writes these, so a
+# compromised pod reaches neither the copy nor a way to replace it.
+resource "google_secret_manager_secret" "lightning_node_backup" {
+  for_each = toset([
+    "cln-alice-hsm-secret", "cln-alice-emergency-recover",
+    "cln-bob-hsm-secret", "cln-bob-emergency-recover",
+  ])
+  secret_id = "lightning-${each.key}"
+  replication {
+    auto {}
+  }
+  depends_on = [google_project_service.this]
+}
