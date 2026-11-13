@@ -10,7 +10,7 @@ Lightning v26.06.10, regtest), with both of its disks deleted first.
 | --- | --- | --- |
 | `hsm_secret` | the root of every key the node has; never changes | `/data`, and Secret Manager `lightning-cln-<node>-hsm-secret` |
 | `emergency.recover` | the node's channels and peers; changes when a channel is opened | `/data`, and Secret Manager `lightning-cln-<node>-emergency-recover` |
-| the database | the latest state of every channel | `/data` and `/backup`, both written in one transaction |
+| the database | the latest state of every channel | `/data` (one zone) and `/backup` (a regional disk, two zones), both written in one transaction |
 
 The two Secret Manager copies are outside the cluster, and nothing in the cluster can read or
 replace them (`bootstrap/ci/secrets.tf` gives no one access). They are written by hand:

@@ -125,6 +125,8 @@ Pod Security `restricted`: non-root, read-only root filesystem, no capabilities,
 - **Backup is synchronous.** `wallet=sqlite3://<main>:<backup>` writes every change to `/data` and
   to a second disk, `/backup`, in one transaction. A snapshot taken now and then would hold an old
   channel state, which is the one thing that must never be restored.
+  `/backup` is a regional disk (`regional-rwo`): kept in two zones, synchronously as well, so a
+  zone's loss does not take both copies. The cluster is zonal, so that saves the data, not the uptime.
 - **Off-cluster copies** of each node's `hsm_secret` and `emergency.recover` are in Secret Manager,
   put there by `scripts/ln-backup.sh`; nothing in the cluster can read them. Losing both disks was
   drilled: [docs/lightning-recovery.md](../docs/lightning-recovery.md).

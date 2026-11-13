@@ -1,0 +1,27 @@
+###
+# A disk kept in two zones at once: every write goes to both before it is
+# acknowledged, so the copy in the second zone is never behind. For data that
+# must survive a zone, where a snapshot or an asynchronous copy would not do
+# (the Lightning nodes' database backup, workloads/lightning/cln).
+#
+# The cluster is zonal, so the two zones are named here. A zone's failure
+# still stops the cluster; what this keeps is the data, to attach again once
+# there are nodes in the other zone.
+###
+apiVersion: storage.k8s.io/v1
+kind: StorageClass
+metadata:
+  name: regional-rwo
+provisioner: pd.csi.storage.gke.io
+parameters:
+  type: pd-balanced
+  replication-type: regional-pd
+volumeBindingMode: WaitForFirstConsumer
+allowVolumeExpansion: true
+reclaimPolicy: Delete
+allowedTopologies:
+  - matchLabelExpressions:
+      - key: topology.gke.io/zone
+        values:
+          - australia-southeast1-a
+          - australia-southeast1-b
