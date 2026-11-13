@@ -47,7 +47,7 @@ for file in hsm_secret emergency.recover; do
     echo "$file: unchanged, $secret is up to date"
     continue
   fi
-  in_pod base64 -w0 "$path" | gcloud secrets versions add "$secret" --data-file=- >/dev/null
+  in_pod base64 -w0 "$path" | gcloud secrets versions add "$secret" --data-file=- --no-user-output-enabled
   there=$(stored "$secret")
   if [ "$there" != "$here" ] || [ "$there" = "$empty" ]; then
     echo "$file: what $secret now holds does not match the node" >&2

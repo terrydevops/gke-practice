@@ -125,6 +125,9 @@ Pod Security `restricted`: non-root, read-only root filesystem, no capabilities,
 - **Backup is synchronous.** `wallet=sqlite3://<main>:<backup>` writes every change to `/data` and
   to a second disk, `/backup`, in one transaction. A snapshot taken now and then would hold an old
   channel state, which is the one thing that must never be restored.
+- **Off-cluster copies** of each node's `hsm_secret` and `emergency.recover` are in Secret Manager,
+  put there by `scripts/ln-backup.sh`; nothing in the cluster can read them. Losing both disks was
+  drilled: [docs/lightning-recovery.md](../docs/lightning-recovery.md).
 - **The bitcoind password** comes from Secret Manager (`lightning-bitcoind-rpc`) through ESO, and
   goes into each process's config file at start, not its arguments.
 - **Network:** closed both ways, then nodes to bitcoind (RPC, ZMQ), nodes to each other (9735), nodes
